@@ -399,9 +399,10 @@ spec:
     spec:
       ami:
         id: to_be_replaced   # overridden by awsMachineTemplateControlPlane patch
+      cloudInit:
+        insecureSkipSecretsManager: true
       iamInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io"
       instanceType: t3.large   # overridden by awsMachineTemplateControlPlane patch
-      unencryptedUserData: true
       rootVolume:
         size: 50
         type: gp3
@@ -416,9 +417,10 @@ spec:
     spec:
       ami:
         id: to_be_replaced   # overridden by awsMachineTemplateWorker patch
+      cloudInit:
+        insecureSkipSecretsManager: true
       iamInstanceProfile: "nodes.cluster-api-provider-aws.sigs.k8s.io"
       instanceType: t3.large   # overridden by awsMachineTemplateWorker patch
-      unencryptedUserData: true
       rootVolume:
         size: 50
         type: gp3
