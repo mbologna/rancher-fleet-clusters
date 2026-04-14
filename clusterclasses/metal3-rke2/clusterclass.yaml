@@ -1,0 +1,260 @@
+# ClusterClass: metal3-rke2
+# Infrastructure: CAPM3 (Metal3 / bare-metal BareMetalHost machines)
+# Control plane:  CAPRKE2 (RKE2ControlPlane)
+# Workers:        CAPRKE2 (RKE2ConfigTemplate)
+#
+# Prerequisites:
+#   - Metal3 / Ironic running and accessible
+#   - BareMetalHost objects already registered in the management cluster
+#   - DHCP + PXE boot configured on the baremetal network
+#
+# Variables:
+#   imageURL       - URL of the OS image (e.g. SLES 15 SP6 raw image)
+#   imageChecksum  - SHA256 checksum of the image
+#   rke2Version    - RKE2 version (e.g. v1.33.10+rke2r3)
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: metal3-rke2
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: RKE2ControlPlaneTemplate
+      name: metal3-rke2-control-plane
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        kind: Metal3MachineTemplate
+        name: metal3-rke2-control-plane-machine
+
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: Metal3ClusterTemplate
+      name: metal3-rke2-cluster
+
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: RKE2ConfigTemplate
+              name: metal3-rke2-worker
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: Metal3MachineTemplate
+              name: metal3-rke2-worker-machine
+
+  variables:
+    - name: imageURL
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "HTTP(S) URL of the OS image to provision on bare-metal hosts"
+    - name: imageChecksum
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "SHA256 checksum of the OS image"
+    - name: rke2Version
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "v1.33.10+rke2r3"
+    - name: controlPlaneEndpointIP
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "Virtual/floating IP for the Kubernetes API (e.g. keepalived VIP)"
+
+  patches:
+    - name: controlPlaneImage
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: Metal3MachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/image/url
+              valueFrom:
+                variable: imageURL
+            - op: replace
+              path: /spec/template/spec/image/checksum
+              valueFrom:
+                variable: imageChecksum
+    - name: workerImage
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: Metal3MachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/image/url
+              valueFrom:
+                variable: imageURL
+            - op: replace
+              path: /spec/template/spec/image/checksum
+              valueFrom:
+                variable: imageChecksum
+    - name: controlPlaneEndpoint
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: Metal3ClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/controlPlaneEndpoint/host
+              valueFrom:
+                variable: controlPlaneEndpointIP
+    - name: rke2Version
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/agentConfig/version
+              valueFrom:
+                variable: rke2Version
+        - selector:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+            kind: RKE2ConfigTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/agentConfig/version
+              valueFrom:
+                variable: rke2Version
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3ClusterTemplate
+metadata:
+  name: metal3-rke2-cluster
+  namespace: default
+spec:
+  template:
+    spec:
+      controlPlaneEndpoint:
+        host: ""   # overridden by patch
+        port: 6443
+      noCloudProvider: true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: metal3-rke2-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      image:
+        url: ""        # overridden by patch
+        checksum: ""   # overridden by patch
+        checksumType: sha256
+        format: raw
+      dataTemplate:
+        name: metal3-rke2-control-plane-data
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3MachineTemplate
+metadata:
+  name: metal3-rke2-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      image:
+        url: ""
+        checksum: ""
+        checksumType: sha256
+        format: raw
+      dataTemplate:
+        name: metal3-rke2-worker-data
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3DataTemplate
+metadata:
+  name: metal3-rke2-control-plane-data
+  namespace: default
+spec:
+  clusterName: ""   # set per-cluster; Metal3 fills this in
+  networkData:
+    links:
+      ethernets:
+        - type: phy
+          id: eth0
+          mtu: 1500
+    networks:
+      - id: eth0
+        type: ipv4_dhcp
+        link: eth0
+    services:
+      - type: dns
+        address: 8.8.8.8
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: Metal3DataTemplate
+metadata:
+  name: metal3-rke2-worker-data
+  namespace: default
+spec:
+  clusterName: ""
+  networkData:
+    links:
+      ethernets:
+        - type: phy
+          id: eth0
+          mtu: 1500
+    networks:
+      - id: eth0
+        type: ipv4_dhcp
+        link: eth0
+    services:
+      - type: dns
+        address: 8.8.8.8
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: metal3-rke2-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        version: v1.33.10+rke2r3   # overridden by patch
+      serverConfig:
+        cni: calico
+      nodeDrainTimeout: 2m
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: RKE2ConfigTemplate
+metadata:
+  name: metal3-rke2-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        version: v1.33.10+rke2r3   # overridden by patch

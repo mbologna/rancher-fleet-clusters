@@ -1,0 +1,42 @@
+# Example: Bare-metal RKE2 cluster via CAPM3 + CAPRKE2
+# Uses the metal3-rke2 ClusterClass defined in clusterclasses/metal3-rke2/
+#
+# Before applying:
+#   1. Register BareMetalHost objects for at least 3 machines
+#      (1 control plane + 2 workers — adjust replicas below accordingly)
+#   2. Set imageURL and imageChecksum to a hosted SLES or RHEL raw image
+#   3. Set controlPlaneEndpointIP to a VIP reachable on the baremetal network
+#      (keepalived, MetalLB, or a hardware LB)
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: metal3-rke2-example
+  namespace: default
+  labels:
+    cluster-api.cattle.io/rancher-auto-import: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+  topology:
+    class: metal3-rke2
+    version: v1.33.10+rke2r3
+    controlPlane:
+      replicas: 1   # set to 3 for HA with a VIP
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: workers
+          replicas: 2
+    variables:
+      - name: imageURL
+        value: "http://YOUR_IMAGE_SERVER/sles-15-sp6.raw.xz"   # CHANGE ME
+      - name: imageChecksum
+        value: "sha256:CHANGE_ME"                               # CHANGE ME
+      - name: rke2Version
+        value: "v1.33.10+rke2r3"
+      - name: controlPlaneEndpointIP
+        value: "192.168.1.100"   # CHANGE ME — VIP on the baremetal network
