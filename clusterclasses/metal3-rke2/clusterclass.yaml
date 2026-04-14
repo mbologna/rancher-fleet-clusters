@@ -21,7 +21,7 @@ metadata:
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: RKE2ControlPlaneTemplate
       name: metal3-rke2-control-plane
     machineInfrastructure:
@@ -42,7 +42,7 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1alpha1
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
               kind: RKE2ConfigTemplate
               name: metal3-rke2-worker
           infrastructure:
@@ -126,7 +126,7 @@ spec:
     - name: rke2Version
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -136,7 +136,7 @@ spec:
               valueFrom:
                 variable: rke2Version
         - selector:
-            apiVersion: bootstrap.cluster.x-k8s.io/v1alpha1
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
             kind: RKE2ConfigTemplate
             matchResources:
               machineDeploymentClass:
@@ -234,7 +234,7 @@ spec:
       - type: dns
         address: 8.8.8.8
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: metal3-rke2-control-plane
@@ -248,7 +248,7 @@ spec:
         cni: calico
       nodeDrainTimeout: 2m
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1alpha1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: RKE2ConfigTemplate
 metadata:
   name: metal3-rke2-worker

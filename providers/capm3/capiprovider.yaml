@@ -18,9 +18,9 @@ metadata:
 spec:
   name: metal3
   type: infrastructure
-  version: "v1.9.1"   # latest stable CAPM3
+  version: "v1.12.3"   # latest stable CAPM3
   fetchConfig:
-    url: https://github.com/metal3-io/cluster-api-provider-metal3/releases/download/v1.9.1/infrastructure-components.yaml
+    url: https://github.com/metal3-io/cluster-api-provider-metal3/releases/download/v1.12.3/infrastructure-components.yaml
   configSecret:
     # References the Secret applied via credentials/metal3/ironic-credentials-secret.yaml
     name: ironic-credentials

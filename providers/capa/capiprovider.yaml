@@ -16,9 +16,9 @@ metadata:
 spec:
   name: aws
   type: infrastructure
-  version: "v2.7.1"   # latest v1beta1-compatible CAPA release
+  version: "v2.10.2"   # latest CAPA release (v1beta2 contract)
   fetchConfig:
-    url: https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.7.1/infrastructure-components.yaml
+    url: https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.10.2/infrastructure-components.yaml
   variables:
     AWS_REGION: "eu-west-1"   # default region; overridden per cluster via ClusterClass variable
     EXP_MACHINE_POOL: "true"
