@@ -2,7 +2,7 @@
 # Infrastructure: CAPA (AWS EC2 machines)
 # Control plane:  CAPRKE2 (RKE2ControlPlane)
 # Workers:        CAPRKE2 (RKE2ConfigTemplate)
-# CAPI contract:  v1beta1 (ClusterClass/Cluster); v1beta2 for infra/controlplane types
+# CAPI contract:  v1beta1 (ClusterClass/Cluster, CAPRKE2); v1beta2 for CAPA infra types
 #
 # Variables exposed by this ClusterClass:
 #   region                 - AWS region (default: eu-west-1)
@@ -32,7 +32,7 @@ metadata:
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: RKE2ControlPlaneTemplate
       name: aws-rke2-control-plane
     machineInfrastructure:
@@ -53,7 +53,7 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
               kind: RKE2ConfigTemplate
               name: aws-rke2-worker
           infrastructure:
@@ -255,7 +255,7 @@ spec:
     - name: rke2ControlPlaneTemplate
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -364,7 +364,7 @@ spec:
         vpc:
           availabilityZoneUsageLimit: 1
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: aws-rke2-control-plane
@@ -425,7 +425,7 @@ spec:
         size: 50
         type: gp3
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: RKE2ConfigTemplate
 metadata:
   name: aws-rke2-worker
