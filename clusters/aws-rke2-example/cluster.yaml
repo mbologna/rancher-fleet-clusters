@@ -58,13 +58,13 @@ spec:
       - name: region
         value: "eu-west-1"
       - name: sshKeyName
-        value: "my-aws-key"   # CHANGE ME — an existing EC2 key pair name
+        value: "mbologna-rancher-platform-key"
       - name: controlPlaneMachineType
         value: "t3.large"
       - name: workerMachineType
         value: "t3.large"
       - name: amiID
-        value: "ami-CHANGE_ME"   # CHANGE ME — see instructions above
+        value: "ami-02b2b2920b4582828"   # Ubuntu 22.04 LTS eu-west-1 (CAPRKE2 installs RKE2 via cloud-init)
       - name: cni
         value: "calico"
       - name: awsClusterIdentityName

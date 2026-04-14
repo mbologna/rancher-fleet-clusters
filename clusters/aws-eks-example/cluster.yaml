@@ -32,7 +32,7 @@ metadata:
   namespace: default
 spec:
   region: "eu-west-1"
-  sshKeyName: "my-aws-key"   # CHANGE ME — EC2 key pair for node SSH access
+  sshKeyName: "mbologna-rancher-platform-key"
   version: "v1.31"           # EKS-supported version; check aws eks describe-addon-versions
   eksClusterName: aws-eks-example
   identityRef:
