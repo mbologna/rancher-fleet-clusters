@@ -1,0 +1,237 @@
+# ClusterClass: aws-kubeadm
+# Infrastructure: CAPA (AWS EC2 machines)
+# Control plane:  KubeadmControlPlane (upstream kubeadm)
+# Workers:        KubeadmConfigTemplate
+#
+# Variables:
+#   region                   - AWS region
+#   sshKeyName               - EC2 key pair name
+#   controlPlaneInstanceType - EC2 type for control plane
+#   workerInstanceType       - EC2 type for workers
+#   k8sVersion               - Kubernetes version (e.g. v1.33.10)
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: aws-kubeadm
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: KubeadmControlPlaneTemplate
+      name: aws-kubeadm-control-plane
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        kind: AWSMachineTemplate
+        name: aws-kubeadm-control-plane-machine
+
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSClusterTemplate
+      name: aws-kubeadm-cluster
+
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: aws-kubeadm-worker
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+              kind: AWSMachineTemplate
+              name: aws-kubeadm-worker-machine
+
+  variables:
+    - name: region
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "eu-west-1"
+    - name: sshKeyName
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: controlPlaneInstanceType
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: workerInstanceType
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: k8sVersion
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "v1.33.10"
+
+  patches:
+    - name: awsRegion
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/region
+              valueFrom:
+                variable: region
+    - name: controlPlaneMachineType
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: controlPlaneInstanceType
+    - name: workerMachineType
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: workerInstanceType
+    - name: sshKey
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+    - name: k8sVersion
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: KubeadmControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/version
+              valueFrom:
+                variable: k8sVersion
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSClusterTemplate
+metadata:
+  name: aws-kubeadm-cluster
+  namespace: default
+spec:
+  template:
+    spec:
+      region: eu-west-1
+      sshKeyName: ""
+      network:
+        vpc:
+          availabilityZoneUsageLimit: 1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-kubeadm-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3.large
+      iamInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io"
+      sshKeyName: ""
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-kubeadm-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3.large
+      iamInstanceProfile: "nodes.cluster-api-provider-aws.sigs.k8s.io"
+      sshKeyName: ""
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: KubeadmControlPlaneTemplate
+metadata:
+  name: aws-kubeadm-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      version: v1.33.10   # overridden by ClusterClass patch
+      kubeadmConfigSpec:
+        clusterConfiguration:
+          apiServer:
+            extraArgs:
+              cloud-provider: aws
+          controllerManager:
+            extraArgs:
+              cloud-provider: aws
+        initConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: aws
+        joinConfiguration:
+          nodeRegistration:
+            kubeletExtraArgs:
+              cloud-provider: aws
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: aws-kubeadm-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: aws

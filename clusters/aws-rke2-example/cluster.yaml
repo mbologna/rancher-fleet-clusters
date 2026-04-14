@@ -1,0 +1,42 @@
+# Example: AWS RKE2 cluster via CAPA + CAPRKE2
+# Uses the aws-rke2 ClusterClass defined in clusterclasses/aws-rke2/
+#
+# Before applying:
+#   1. Set sshKeyName to an existing EC2 key pair in your account
+#   2. Ensure CAPA is initialized with AWS credentials
+#   3. Ensure the IAM instance profiles exist:
+#      clusterawsadm bootstrap iam create-cloudformation-stack
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: aws-rke2-example
+  namespace: default
+  labels:
+    # Rancher Turtles auto-import label
+    cluster-api.cattle.io/rancher-auto-import: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+  topology:
+    class: aws-rke2
+    version: v1.33.10+rke2r3
+    controlPlane:
+      replicas: 1   # increase to 3 for HA
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: workers
+          replicas: 2
+    variables:
+      - name: region
+        value: "eu-west-1"
+      - name: sshKeyName
+        value: "my-aws-key"   # CHANGE ME
+      - name: controlPlaneInstanceType
+        value: "t3.large"
+      - name: workerInstanceType
+        value: "t3.large"

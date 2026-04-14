@@ -1,0 +1,212 @@
+# ClusterClass: aws-rke2
+# Infrastructure: CAPA (AWS EC2 machines)
+# Control plane: CAPRKE2 (RKE2ControlPlane)
+# Workers:        CAPRKE2 (RKE2ConfigTemplate)
+#
+# Variables exposed by this ClusterClass:
+#   region        - AWS region (default: eu-west-1)
+#   sshKeyName    - EC2 key pair name for SSH access
+#   controlPlaneInstanceType - EC2 type for control plane nodes
+#   workerInstanceType       - EC2 type for worker nodes
+---
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: aws-rke2
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+      kind: RKE2ControlPlaneTemplate
+      name: aws-rke2-control-plane
+    machineInfrastructure:
+      ref:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        kind: AWSMachineTemplate
+        name: aws-rke2-control-plane-machine
+
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSClusterTemplate
+      name: aws-rke2-cluster
+
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1alpha1
+              kind: RKE2ConfigTemplate
+              name: aws-rke2-worker
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+              kind: AWSMachineTemplate
+              name: aws-rke2-worker-machine
+
+  variables:
+    - name: region
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "eu-west-1"
+    - name: sshKeyName
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: controlPlaneInstanceType
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: workerInstanceType
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: vpcID
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "Existing VPC ID. Leave empty to let CAPA create a new VPC."
+          default: ""
+
+  patches:
+    - name: awsRegion
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/region
+              valueFrom:
+                variable: region
+    - name: controlPlaneMachineType
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: controlPlaneInstanceType
+    - name: workerMachineType
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: workerInstanceType
+    - name: sshKey
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names: ["default-worker"]
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSClusterTemplate
+metadata:
+  name: aws-rke2-cluster
+  namespace: default
+spec:
+  template:
+    spec:
+      region: eu-west-1   # overridden by ClusterClass patch
+      sshKeyName: ""       # overridden by ClusterClass patch
+      network:
+        vpc:
+          availabilityZoneUsageLimit: 1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-rke2-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3.large   # overridden by ClusterClass patch
+      iamInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io"
+      sshKeyName: ""
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-rke2-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3.large   # overridden by ClusterClass patch
+      iamInstanceProfile: "nodes.cluster-api-provider-aws.sigs.k8s.io"
+      sshKeyName: ""
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: aws-rke2-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        version: v1.33.10+rke2r3
+      serverConfig:
+        cloudProviderName: aws
+        cni: calico
+      nodeDrainTimeout: 2m
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1alpha1
+kind: RKE2ConfigTemplate
+metadata:
+  name: aws-rke2-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        version: v1.33.10+rke2r3

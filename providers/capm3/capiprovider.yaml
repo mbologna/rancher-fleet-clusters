@@ -1,0 +1,26 @@
+# CAPM3 (Cluster API Provider Metal3) CAPIProvider
+# Installs the bare-metal infrastructure provider.
+#
+# Credentials: apply credentials/metal3/ironic-credentials-secret.yaml BEFORE this
+# (Fleet does this automatically if credentials/metal3 is listed first in the GitRepo paths).
+#
+# Prerequisites on the target baremetal network:
+#   - Ironic (HTTP/HTTPS API on port 6385 and Inspector on 5050)
+#   - DHCP server
+#   - PXE / iPXE boot capability
+#   - BareMetalHost CRDs (provided by metal3-io/baremetal-operator)
+---
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: metal3
+  namespace: capm3-system
+spec:
+  name: metal3
+  type: infrastructure
+  version: "v1.9.1"   # latest stable CAPM3
+  fetchConfig:
+    url: https://github.com/metal3-io/cluster-api-provider-metal3/releases/download/v1.9.1/infrastructure-components.yaml
+  configSecret:
+    # References the Secret applied via credentials/metal3/ironic-credentials-secret.yaml
+    name: ironic-credentials
