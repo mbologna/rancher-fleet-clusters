@@ -43,9 +43,7 @@ spec:
       cidrBlocks:
         - 10.96.0.0/12
   topology:
-    classRef:
-      name: aws-rke2
-      namespace: default
+    class: aws-rke2
     version: v1.33.10+rke2r3
     controlPlane:
       replicas: 1   # increase to 3 for HA
