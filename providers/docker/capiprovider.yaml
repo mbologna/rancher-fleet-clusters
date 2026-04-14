@@ -1,0 +1,14 @@
+---
+# CAPD (Cluster API Provider Docker) — for local/dev downstream clusters.
+# Requires Docker running on the management node (installed by Ansible).
+apiVersion: turtles-capi.cattle.io/v1alpha1
+kind: CAPIProvider
+metadata:
+  name: docker
+  namespace: cattle-turtles-system
+spec:
+  name: docker
+  type: infrastructure
+  version: "v1.12.5"
+  fetchConfig:
+    url: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.12.5/infrastructure-components-development.yaml
