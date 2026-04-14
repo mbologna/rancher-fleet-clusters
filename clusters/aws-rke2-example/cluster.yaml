@@ -1,6 +1,6 @@
 # Example: AWS RKE2 cluster via CAPA + CAPRKE2
 # Uses the aws-rke2 ClusterClass defined in clusterclasses/aws-rke2/
-# CAPI contract: v1beta2
+# CAPI contract: v1beta1 (Cluster); v1beta2 for CAPA infrastructure types
 #
 # Before applying, fill in the variables below:
 #   1. amiID     - AMI ID of a base OS image (Ubuntu 22.04, RHEL 9, etc.)
@@ -27,7 +27,7 @@ spec:
   secretRef: cluster-identity
   allowedNamespaces: {}
 ---
-apiVersion: cluster.x-k8s.io/v1beta2
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: aws-rke2-example
