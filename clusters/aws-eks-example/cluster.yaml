@@ -77,6 +77,11 @@ spec:
   scaling:
     minSize: 1
     maxSize: 3
+  # Explicitly specify subnets so CAPA can determine placement for the nodegroup.
+  # EKS nodegroups require subnets in the same VPC as the control plane.
+  subnetIDs:
+    - "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a
+    - "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b
 ---
 # MachinePool — CAPI wrapper that references the AWSManagedMachinePool above.
 # Bootstrap is handled automatically by EKS — no KubeadmConfig or RKE2Config needed.
