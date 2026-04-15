@@ -40,11 +40,13 @@ spec:
     name: cluster-identity   # Secret created by Ansible in namespace "default"
   # Reuse existing VPC to avoid hitting the AWS VPC limit (default: 5 per region).
   # The VPC and subnet were created by Terraform for the management cluster.
+  # EKS requires at least 2 subnets in different AZs.
   network:
     vpc:
       id: "vpc-0f0836f947f78b1e4"
     subnets:
-      - id: "subnet-00d6efd5dd3376113"
+      - id: "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a (management + workload)
+      - id: "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b (EKS second AZ)
 ---
 # Cluster — top-level CAPI object; wires together infrastructure and control plane.
 apiVersion: cluster.x-k8s.io/v1beta1
