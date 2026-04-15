@@ -270,6 +270,10 @@ kind: AWSClusterTemplate
 metadata:
   name: aws-rke2-cluster
   namespace: default
+  annotations:
+    # CAPA's admission webhook marks AWSClusterTemplate.spec as immutable after first
+    # creation. This annotation tells Helm/Fleet to skip updates on this resource.
+    helm.sh/resource-policy: keep
 spec:
   template:
     spec:
@@ -394,6 +398,8 @@ kind: AWSMachineTemplate
 metadata:
   name: aws-rke2-control-plane-machine
   namespace: default
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   template:
     spec:
@@ -412,6 +418,8 @@ kind: AWSMachineTemplate
 metadata:
   name: aws-rke2-worker-machine
   namespace: default
+  annotations:
+    helm.sh/resource-policy: keep
 spec:
   template:
     spec:
