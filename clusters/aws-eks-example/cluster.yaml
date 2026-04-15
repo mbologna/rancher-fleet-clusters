@@ -1,0 +1,104 @@
+# Example: EKS managed cluster via CAPA
+#
+# Unlike self-managed clusters, EKS uses AWSManagedControlPlane — AWS manages etcd,
+# the API server, and control plane upgrades. Workers are EC2 nodes in an EKS managed
+# node group (AWSManagedMachinePool). No AMI selection needed for the control plane.
+#
+# Before applying:
+#   1. Set sshKeyName to an existing EC2 key pair (for node SSH access)
+#   2. Set version to an EKS-supported Kubernetes version:
+#        aws eks describe-addon-versions --query 'addons[0].addonVersions[].compatibilities[].clusterVersion' \
+#          --output text | tr '\t' '\n' | sort -u
+#   3. Ensure the AWS credentials Secret "cluster-identity" exists in namespace "default"
+#      (created automatically by Ansible — do not add it here)
+#   4. Ensure IAM profiles exist: clusterawsadm bootstrap iam create-cloudformation-stack
+#
+# Cost note: EKS charges ~$0.10/hr for the managed control plane, independent of worker nodes.
+---
+# AWSManagedCluster — infrastructure stub required by CAPI for EKS clusters.
+# The real infrastructure is managed by AWSManagedControlPlane below.
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSManagedCluster
+metadata:
+  name: aws-eks-example
+  namespace: default
+spec: {}
+---
+# AWSManagedControlPlane — creates and manages the EKS cluster in AWS.
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: AWSManagedControlPlane
+metadata:
+  name: aws-eks-example-control-plane
+  namespace: default
+spec:
+  region: "eu-west-1"
+  sshKeyName: "mbologna-rancher-platform-key"
+  version: "v1.31"           # EKS-supported version; check aws eks describe-addon-versions
+  eksClusterName: aws-eks-example
+  identityRef:
+    kind: AWSClusterStaticIdentity
+    name: cluster-identity   # Secret created by Ansible in namespace "default"
+  # Reuse existing VPC to avoid hitting the AWS VPC limit (default: 5 per region).
+  # The VPC and subnet were created by Terraform for the management cluster.
+  # EKS requires at least 2 subnets in different AZs.
+  network:
+    vpc:
+      id: "vpc-0f0836f947f78b1e4"
+    subnets:
+      - id: "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a (management + workload)
+      - id: "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b (EKS second AZ)
+---
+# Cluster — top-level CAPI object; wires together infrastructure and control plane.
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: aws-eks-example
+  namespace: default
+  labels:
+    cluster-api.cattle.io/rancher-auto-import: "true"
+spec:
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    kind: AWSManagedControlPlane
+    name: aws-eks-example-control-plane
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    kind: AWSManagedCluster
+    name: aws-eks-example
+---
+# AWSManagedMachinePool — EKS managed node group (EC2 nodes managed by AWS).
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSManagedMachinePool
+metadata:
+  name: aws-eks-example-pool-0
+  namespace: default
+spec:
+  instanceType: "t3.large"
+  scaling:
+    minSize: 1
+    maxSize: 3
+  # Explicitly specify subnets so CAPA can determine placement for the nodegroup.
+  # EKS nodegroups require subnets in the same VPC as the control plane.
+  subnetIDs:
+    - "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a
+    - "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b
+---
+# MachinePool — CAPI wrapper that references the AWSManagedMachinePool above.
+# Bootstrap is handled automatically by EKS — no KubeadmConfig or RKE2Config needed.
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: MachinePool
+metadata:
+  name: aws-eks-example-pool-0
+  namespace: default
+spec:
+  clusterName: aws-eks-example
+  replicas: 2
+  template:
+    spec:
+      clusterName: aws-eks-example
+      bootstrap:
+        dataSecretName: ""   # EKS manages node bootstrap via UserData internally
+      infrastructureRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        kind: AWSManagedMachinePool
+        name: aws-eks-example-pool-0

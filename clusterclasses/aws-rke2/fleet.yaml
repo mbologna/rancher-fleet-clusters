@@ -1,1 +1,16 @@
 defaultNamespace: default
+
+# AWSClusterTemplate and AWSMachineTemplate specs are immutable in CAPA v2
+# (the admission webhook rejects any spec modification after first creation).
+# Tell Fleet's diff engine to ignore the spec of these resources to avoid
+# triggering the webhook on reconcile loops.
+diff:
+  comparePatches:
+    - apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSClusterTemplate
+      operations:
+        - {op: remove, path: /spec}
+    - apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSMachineTemplate
+      operations:
+        - {op: remove, path: /spec}

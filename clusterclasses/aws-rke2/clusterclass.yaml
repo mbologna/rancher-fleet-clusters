@@ -2,7 +2,7 @@
 # Infrastructure: CAPA (AWS EC2 machines)
 # Control plane:  CAPRKE2 (RKE2ControlPlane)
 # Workers:        CAPRKE2 (RKE2ConfigTemplate)
-# CAPI contract:  v1beta2
+# CAPI contract:  v1beta1 (ClusterClass/Cluster, CAPRKE2); v1beta2 for CAPA infra types
 #
 # Variables exposed by this ClusterClass:
 #   region                 - AWS region (default: eu-west-1)
@@ -24,25 +24,25 @@
 # Prerequisites (one-time per AWS account):
 #   clusterawsadm bootstrap iam create-cloudformation-stack
 ---
-apiVersion: cluster.x-k8s.io/v1beta2
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: ClusterClass
 metadata:
   name: aws-rke2
   namespace: default
 spec:
   controlPlane:
-    templateRef:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
       kind: RKE2ControlPlaneTemplate
       name: aws-rke2-control-plane
     machineInfrastructure:
-      templateRef:
+      ref:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
         kind: AWSMachineTemplate
         name: aws-rke2-control-plane-machine
 
   infrastructure:
-    templateRef:
+    ref:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: AWSClusterTemplate
       name: aws-rke2-cluster
@@ -50,16 +50,17 @@ spec:
   workers:
     machineDeployments:
       - class: default-worker
-        bootstrap:
-          templateRef:
-            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
-            kind: RKE2ConfigTemplate
-            name: aws-rke2-worker
-        infrastructure:
-          templateRef:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-            kind: AWSMachineTemplate
-            name: aws-rke2-worker-machine
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: RKE2ConfigTemplate
+              name: aws-rke2-worker
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+              kind: AWSMachineTemplate
+              name: aws-rke2-worker-machine
 
   variables:
     - name: region
@@ -105,6 +106,27 @@ spec:
           type: string
           description: "Name of the AWSClusterStaticIdentity resource referencing AWS credentials."
           default: "cluster-identity"
+    - name: vpcID
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          description: "Existing VPC ID to use instead of creating a new one. Leave empty to let CAPA create a VPC."
+    - name: subnetID
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          description: "Existing subnet ID for EC2 instances. Required when vpcID is set."
+    - name: publicIP
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
+          description: "Assign public IPs to EC2 instances. Set to true when using a public subnet without NAT gateway."
 
   patches:
     - name: awsClusterTemplate
@@ -135,6 +157,23 @@ spec:
               path: /spec/template/spec/identityRef/name
               valueFrom:
                 variable: awsClusterIdentityName
+    - name: existingVpc
+      enabledIf: '{{ ne .vpcID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/network/vpc
+              valueFrom:
+                template: '{"id": "{{ .vpcID }}"}'
+            - op: add
+              path: /spec/template/spec/network/subnets
+              valueFrom:
+                template: '[{"id": "{{ .subnetID }}", "resourceID": "{{ .subnetID }}", "isPublic": {{ .publicIP }}}]'
     - name: awsMachineTemplateControlPlane
       definitions:
         - selector:
@@ -155,6 +194,23 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+    - name: controlPlaneSubnet
+      enabledIf: '{{ ne .subnetID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/subnet
+              valueFrom:
+                template: '{"id": "{{ .subnetID }}"}'
+            - op: add
+              path: /spec/template/spec/publicIP
+              valueFrom:
+                variable: publicIP
     - name: awsMachineTemplateWorker
       definitions:
         - selector:
@@ -177,10 +233,29 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+    - name: workerSubnet
+      enabledIf: '{{ ne .subnetID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/subnet
+              valueFrom:
+                template: '{"id": "{{ .subnetID }}"}'
+            - op: add
+              path: /spec/template/spec/publicIP
+              valueFrom:
+                variable: publicIP
     - name: rke2ControlPlaneTemplate
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -195,6 +270,12 @@ kind: AWSClusterTemplate
 metadata:
   name: aws-rke2-cluster
   namespace: default
+  annotations:
+    # CAPA's admission webhook marks AWSClusterTemplate.spec as immutable after first
+    # creation. This annotation tells Helm/Fleet to skip updates on this resource.
+    helm.sh/resource-policy: keep
+    # Fleet: do not manage (update/delete) this resource — it is immutable in CAPA v2.
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
@@ -212,7 +293,8 @@ spec:
         ingressRules:
           - description: RKE2 Control Plane
             fromPort: 9345
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 9345
           - cidrBlocks:
@@ -223,12 +305,14 @@ spec:
             toPort: 6443
           - description: Etcd
             fromPort: 2379
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 2379
           - description: Etcd peer
             fromPort: 2380
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 2380
         loadBalancerType: nlb
@@ -258,7 +342,8 @@ spec:
         additionalControlPlaneIngressRules:
           - description: RKE2 Control Plane
             fromPort: 9345
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 9345
           - description: RKE2 Control Plane additional group
@@ -272,18 +357,20 @@ spec:
             toPort: 9345
           - description: Etcd
             fromPort: 2379
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 2379
           - description: Etcd peer
             fromPort: 2380
-            natGatewaysIPsSource: true
+            cidrBlocks:
+              - 10.0.0.0/8
             protocol: tcp
             toPort: 2380
         vpc:
           availabilityZoneUsageLimit: 1
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: aws-rke2-control-plane
@@ -313,11 +400,16 @@ kind: AWSMachineTemplate
 metadata:
   name: aws-rke2-control-plane-machine
   namespace: default
+  annotations:
+    helm.sh/resource-policy: keep
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
       ami:
         id: to_be_replaced   # overridden by awsMachineTemplateControlPlane patch
+      cloudInit:
+        insecureSkipSecretsManager: true
       iamInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io"
       instanceType: t3.large   # overridden by awsMachineTemplateControlPlane patch
       rootVolume:
@@ -329,18 +421,23 @@ kind: AWSMachineTemplate
 metadata:
   name: aws-rke2-worker-machine
   namespace: default
+  annotations:
+    helm.sh/resource-policy: keep
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
       ami:
         id: to_be_replaced   # overridden by awsMachineTemplateWorker patch
+      cloudInit:
+        insecureSkipSecretsManager: true
       iamInstanceProfile: "nodes.cluster-api-provider-aws.sigs.k8s.io"
       instanceType: t3.large   # overridden by awsMachineTemplateWorker patch
       rootVolume:
         size: 50
         type: gp3
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
 kind: RKE2ConfigTemplate
 metadata:
   name: aws-rke2-worker
@@ -354,3 +451,18 @@ spec:
             - --cloud-provider=external
       preRKE2Commands:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
+        # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
+        # asymmetric routing (hairpin) on port 9345. Fix: scan the local subnet for a host
+        # responding on port 9345 (RKE2 supervisor) and map the NLB DNS to that private IP.
+        - |
+          SUBNET=$(ip route | awk '/scope link/{print $1}' | head -1 | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3}')
+          for i in $(seq 1 254); do
+            if nc -z -w1 "${SUBNET}.${i}" 9345 2>/dev/null; then
+              NLB_PRIVATE_IP="${SUBNET}.${i}"
+              break
+            fi
+          done
+          if [ -n "${NLB_PRIVATE_IP}" ]; then
+            NLB_DNS=$(grep '^server:' /etc/rancher/rke2/config.yaml | sed 's|server: https://||;s|:9345||')
+            echo "${NLB_PRIVATE_IP} ${NLB_DNS}" | sudo tee -a /etc/hosts
+          fi

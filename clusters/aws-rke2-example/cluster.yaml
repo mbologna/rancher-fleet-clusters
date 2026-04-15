@@ -1,6 +1,6 @@
 # Example: AWS RKE2 cluster via CAPA + CAPRKE2
 # Uses the aws-rke2 ClusterClass defined in clusterclasses/aws-rke2/
-# CAPI contract: v1beta2
+# CAPI contract: v1beta1 (Cluster); v1beta2 for CAPA infrastructure types
 #
 # Before applying, fill in the variables below:
 #   1. amiID     - AMI ID of a base OS image (Ubuntu 22.04, RHEL 9, etc.)
@@ -27,7 +27,7 @@ spec:
   secretRef: cluster-identity
   allowedNamespaces: {}
 ---
-apiVersion: cluster.x-k8s.io/v1beta2
+apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
   name: aws-rke2-example
@@ -43,9 +43,7 @@ spec:
       cidrBlocks:
         - 10.96.0.0/12
   topology:
-    classRef:
-      name: aws-rke2
-      namespace: default
+    class: aws-rke2
     version: v1.33.10+rke2r3
     controlPlane:
       replicas: 1   # increase to 3 for HA
@@ -58,14 +56,20 @@ spec:
       - name: region
         value: "eu-west-1"
       - name: sshKeyName
-        value: "my-aws-key"   # CHANGE ME — an existing EC2 key pair name
+        value: "mbologna-rancher-platform-key"
       - name: controlPlaneMachineType
         value: "t3.large"
       - name: workerMachineType
         value: "t3.large"
       - name: amiID
-        value: "ami-CHANGE_ME"   # CHANGE ME — see instructions above
+        value: "ami-02b2b2920b4582828"   # Ubuntu 22.04 LTS eu-west-1 (CAPRKE2 installs RKE2 via cloud-init)
       - name: cni
         value: "calico"
       - name: awsClusterIdentityName
         value: "cluster-identity"
+      - name: vpcID
+        value: "vpc-0f0836f947f78b1e4"   # Existing Terraform VPC (VPC limit workaround)
+      - name: subnetID
+        value: "subnet-00d6efd5dd3376113"  # Public subnet eu-west-1a in Terraform VPC
+      - name: publicIP
+        value: true   # Required for public subnet (no NAT gateway)
