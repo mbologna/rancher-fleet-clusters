@@ -274,6 +274,8 @@ metadata:
     # CAPA's admission webhook marks AWSClusterTemplate.spec as immutable after first
     # creation. This annotation tells Helm/Fleet to skip updates on this resource.
     helm.sh/resource-policy: keep
+    # Fleet: do not manage (update/delete) this resource — it is immutable in CAPA v2.
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
@@ -400,6 +402,7 @@ metadata:
   namespace: default
   annotations:
     helm.sh/resource-policy: keep
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
@@ -420,6 +423,7 @@ metadata:
   namespace: default
   annotations:
     helm.sh/resource-policy: keep
+    objectset.rio.cattle.io/ignore: "true"
 spec:
   template:
     spec:
