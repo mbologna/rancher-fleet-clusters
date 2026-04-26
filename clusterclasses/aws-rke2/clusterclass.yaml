@@ -2,7 +2,8 @@
 # Infrastructure: CAPA (AWS EC2 machines)
 # Control plane:  CAPRKE2 (RKE2ControlPlane)
 # Workers:        CAPRKE2 (RKE2ConfigTemplate)
-# CAPI contract:  v1beta1 (ClusterClass/Cluster, CAPRKE2); v1beta2 for CAPA infra types
+# CAPI contract:  v1beta2 for Cluster/ClusterClass, CAPA infra types, and CAPRKE2 types
+# Note: v1beta2 ClusterClass uses templateRef (not ref) for all template references
 #
 # Variables exposed by this ClusterClass:
 #   region                 - AWS region (default: eu-west-1)
@@ -24,25 +25,25 @@
 # Prerequisites (one-time per AWS account):
 #   clusterawsadm bootstrap iam create-cloudformation-stack
 ---
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: ClusterClass
 metadata:
   name: aws-rke2
   namespace: default
 spec:
   controlPlane:
-    ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    templateRef:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: RKE2ControlPlaneTemplate
       name: aws-rke2-control-plane
     machineInfrastructure:
-      ref:
+      templateRef:
         apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
         kind: AWSMachineTemplate
         name: aws-rke2-control-plane-machine
 
   infrastructure:
-    ref:
+    templateRef:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: AWSClusterTemplate
       name: aws-rke2-cluster
@@ -50,17 +51,16 @@ spec:
   workers:
     machineDeployments:
       - class: default-worker
-        template:
-          bootstrap:
-            ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
-              kind: RKE2ConfigTemplate
-              name: aws-rke2-worker
-          infrastructure:
-            ref:
-              apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-              kind: AWSMachineTemplate
-              name: aws-rke2-worker-machine
+        bootstrap:
+          templateRef:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            name: aws-rke2-worker
+        infrastructure:
+          templateRef:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            name: aws-rke2-worker-machine
 
   variables:
     - name: region
@@ -255,7 +255,7 @@ spec:
     - name: rke2ControlPlaneTemplate
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: RKE2ControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -370,7 +370,7 @@ spec:
         vpc:
           availabilityZoneUsageLimit: 1
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: RKE2ControlPlaneTemplate
 metadata:
   name: aws-rke2-control-plane
@@ -437,7 +437,7 @@ spec:
         size: 50
         type: gp3
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: RKE2ConfigTemplate
 metadata:
   name: aws-rke2-worker

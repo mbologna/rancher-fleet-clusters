@@ -57,7 +57,7 @@ spec:
       - name: region
         value: "eu-west-1"
       - name: sshKeyName
-        value: "mbologna-rancher-platform-key"
+        value: "rancher-platform-key"
       - name: controlPlaneMachineType
         value: "t3.large"
       - name: workerMachineType
