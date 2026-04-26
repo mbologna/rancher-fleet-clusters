@@ -1,0 +1,130 @@
+---
+# ConfigMap containing aws-cloud-controller-manager manifests.
+# Applied to every RKE2 cluster via the ClusterResourceSet below.
+#
+# The CCM sets spec.providerID on each node and removes the
+# node.cloudprovider.kubernetes.io/uninitialized taint, which
+# CAPI requires to track machines.  The IAM instance profile
+# "control-plane.cluster-api-provider-aws.sigs.k8s.io" must
+# exist in the AWS account (created by `clusterawsadm bootstrap iam`).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-ccm-manifests
+  namespace: default
+data:
+  aws-ccm.yaml: |
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: cloud-controller-manager
+      namespace: kube-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: system:cloud-controller-manager
+      annotations:
+        rbac.authorization.kubernetes.io/autoupdate: "true"
+      labels:
+        k8s-app: cloud-controller-manager
+    rules:
+      - apiGroups: [""]
+        resources: [events]
+        verbs: [create, patch, update]
+      - apiGroups: [""]
+        resources: [nodes]
+        verbs: ["*"]
+      - apiGroups: [""]
+        resources: [nodes/status]
+        verbs: [patch]
+      - apiGroups: [""]
+        resources: [services, services/status]
+        verbs: [list, patch, update, watch]
+      - apiGroups: [""]
+        resources: [serviceaccounts]
+        verbs: [create, get]
+      - apiGroups: [""]
+        resources: [persistentvolumes]
+        verbs: [get, list, update, watch]
+      - apiGroups: [""]
+        resources: [endpoints]
+        verbs: [create, get, list, watch, update]
+      - apiGroups: [coordination.k8s.io]
+        resources: [leases]
+        verbs: [create, get, list, watch, update]
+      - apiGroups: [""]
+        resources: [serviceaccounts/token]
+        verbs: [create]
+      - apiGroups: [""]
+        resources: [configmaps]
+        verbs: [get, list, watch, create, update, patch]
+    ---
+    metadata:
+      name: system:cloud-controller-manager
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: system:cloud-controller-manager
+    subjects:
+      - kind: ServiceAccount
+        name: cloud-controller-manager
+        namespace: kube-system
+    ---
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: aws-cloud-controller-manager
+      namespace: kube-system
+      labels:
+        k8s-app: aws-cloud-controller-manager
+    spec:
+      selector:
+        matchLabels:
+          k8s-app: aws-cloud-controller-manager
+      updateStrategy:
+        type: RollingUpdate
+      template:
+        metadata:
+          labels:
+            k8s-app: aws-cloud-controller-manager
+        spec:
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          tolerations:
+            - key: node.cloudprovider.kubernetes.io/uninitialized
+              value: "true"
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/control-plane
+              effect: NoSchedule
+          serviceAccountName: cloud-controller-manager
+          hostNetwork: true
+          priorityClassName: system-cluster-critical
+          containers:
+            - name: aws-cloud-controller-manager
+              image: registry.k8s.io/provider-aws/cloud-controller-manager:v1.33.0
+              args:
+                - --v=2
+                - --cloud-provider=aws
+                - --configure-cloud-routes=false
+                - --secure-port=0
+              resources:
+                requests:
+                  cpu: 200m
+---
+# ClusterResourceSet: applies aws-ccm-manifests to every Cluster
+# labelled `ccm: aws` in the default namespace.
+apiVersion: addons.cluster.x-k8s.io/v1beta2
+kind: ClusterResourceSet
+metadata:
+  name: aws-ccm
+  namespace: default
+spec:
+  strategy: ApplyOnce
+  clusterSelector:
+    matchLabels:
+      ccm: aws
+  resources:
+    - name: aws-ccm-manifests
+      kind: ConfigMap

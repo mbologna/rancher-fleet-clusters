@@ -3,13 +3,11 @@ defaultNamespace: kube-system
 dependsOn:
   - name: capi-cluster-templates-providers-capa
 
-# Deploy AWS CCM only to clusters labeled infrastructure=aws.
-# Add this label to your Cluster CR:
-#   metadata:
-#     labels:
-#       infrastructure: aws
-targetCustomizations:
-  - name: aws
-    clusterSelector:
+# Deploy AWS CCM only to imported clusters labeled infrastructure=aws.
+# Without an explicit targets block Fleet would deploy to all clusters
+# (including the management cluster which already runs its own CCM,
+# causing a port-conflict crash).
+targets:
+  - clusterSelector:
       matchLabels:
         infrastructure: aws

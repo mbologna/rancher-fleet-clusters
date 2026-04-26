@@ -42,7 +42,7 @@ rules:
     verbs: [create, get, list, watch, update]
   - apiGroups: ['']
     resources: [configmaps]
-    verbs: [get, list, watch]
+    verbs: [get, list, watch, create, update, patch]
   - apiGroups: [coordination.k8s.io]
     resources: [leases]
     verbs: [create, get, list, watch, update]
@@ -76,6 +76,7 @@ spec:
     spec:
       nodeSelector:
         node-role.kubernetes.io/control-plane: 'true'
+        capi-managed: 'true'
       tolerations:
         - key: node.cloudprovider.kubernetes.io/uninitialized
           value: 'true'
@@ -93,6 +94,7 @@ spec:
             - --cloud-provider=aws
             - --allocate-node-cidrs=false
             - --configure-cloud-routes=false
+            - --secure-port=0
           resources:
             requests:
               cpu: 200m

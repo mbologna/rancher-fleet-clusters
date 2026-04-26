@@ -384,6 +384,7 @@ spec:
         kubelet:
           extraArgs:
             - --cloud-provider=external
+            - --node-labels=capi-managed=true
       serverConfig:
         cloudProviderName: external
         etcd:
@@ -449,6 +450,7 @@ spec:
         kubelet:
           extraArgs:
             - --cloud-provider=external
+            - --node-labels=capi-managed=true
       preRKE2Commands:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
         # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
