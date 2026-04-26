@@ -380,6 +380,29 @@ spec:
     spec:
       preRKE2Commands:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
+        # RKE2 install retries: GitHub CDN occasionally returns 502; retry up to 10 times
+        - |
+          for i in $(seq 1 10); do
+            curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.33.10+rke2r3 sh -s - && break
+            echo "RKE2 install attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
+        # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
+        # asymmetric routing (hairpin) on port 9345. Fix: scan the local subnet for a host
+        # responding on port 9345 (RKE2 supervisor) and map the NLB DNS to that private IP.
+        # This is a no-op for the initial control-plane node (nothing listens on 9345 yet).
+        - |
+          SUBNET=$(ip route | awk '/scope link/{print $1}' | head -1 | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3}')
+          for i in $(seq 1 254); do
+            if nc -z -w1 "${SUBNET}.${i}" 9345 2>/dev/null; then
+              NLB_PRIVATE_IP="${SUBNET}.${i}"
+              break
+            fi
+          done
+          if [ -n "${NLB_PRIVATE_IP}" ]; then
+            NLB_DNS=$(grep '^server:' /etc/rancher/rke2/config.yaml | sed 's|server: https://||;s|:9345||')
+            echo "${NLB_PRIVATE_IP} ${NLB_DNS}" | sudo tee -a /etc/hosts
+          fi
       agentConfig:
         kubelet:
           extraArgs:
@@ -453,6 +476,13 @@ spec:
             - --node-labels=capi-managed=true
       preRKE2Commands:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
+        # RKE2 install retries: GitHub CDN occasionally returns 502; retry up to 10 times
+        - |
+          for i in $(seq 1 10); do
+            curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.33.10+rke2r3 INSTALL_RKE2_TYPE="agent" sh -s - && break
+            echo "RKE2 install attempt $i failed, retrying in 30s..."
+            sleep 30
+          done
         # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
         # asymmetric routing (hairpin) on port 9345. Fix: scan the local subnet for a host
         # responding on port 9345 (RKE2 supervisor) and map the NLB DNS to that private IP.
