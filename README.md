@@ -58,16 +58,33 @@ Requires Docker running on the management node. Ships out of the box with ranche
 clusterawsadm bootstrap iam create-cloudformation-stack
 ```
 
-**Create the credentials secret** (the namespace and secret can be created before Fleet runs):
+**Create the credentials secrets** (the namespace and secrets can be created before Fleet runs):
 
 ```bash
 kubectl create namespace capa-system --dry-run=client -o yaml | kubectl apply -f -
 
-kubectl create secret generic cluster-identity-secret \
+# Secret referenced by AWSClusterStaticIdentity — needs AccessKeyID + SecretAccessKey
+kubectl create secret generic cluster-identity \
   --namespace capa-system \
   --from-literal=AccessKeyID=<your-access-key-id> \
   --from-literal=SecretAccessKey=<your-secret-access-key>
 ```
+
+After registering Fleet (step 3) and waiting for the CAPA CAPIProvider to appear, **patch**
+`capa-credentials` (created by Turtles) with base64-encoded AWS credentials for provider
+installation:
+
+```bash
+B64_CREDS=$(printf "[default]\naws_access_key_id = <id>\naws_secret_access_key = <secret>" \
+  | base64 | tr -d '\n')
+kubectl patch secret capa-credentials -n capa-system \
+  --type=merge \
+  -p "{\"data\":{\"AWS_B64ENCODED_CREDENTIALS\":\"${B64_CREDS}\"}}"
+```
+
+> **VPC/subnet IDs**: `clusters/aws-rke2-example/cluster.yaml` and
+> `clusters/aws-eks-example/cluster.yaml` contain hardcoded VPC and subnet IDs — update
+> them to match your own infrastructure before use.
 
 > **Cost note:** EKS charges ~$0.10/hr for the managed control plane.
 
@@ -124,17 +141,16 @@ kubectl get bundles -n fleet-local
 the provider. Wait for the CAPA provider to be ready, then create the identity:
 
 ```bash
-kubectl wait provider capa -n capa-system \
-  --for=condition=Ready --timeout=300s
+kubectl wait capiprovider aws -n capa-system \
+  --for=condition=ProviderInstalled=True --timeout=300s
 
 kubectl apply -f - <<EOF
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: AWSClusterStaticIdentity
 metadata:
   name: cluster-identity
-  namespace: default
 spec:
-  secretRef: cluster-identity-secret
+  secretRef: cluster-identity
   allowedNamespaces: {}
 EOF
 ```

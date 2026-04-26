@@ -69,8 +69,8 @@ spec:
       - name: awsClusterIdentityName
         value: "cluster-identity"
       - name: vpcID
-        value: "vpc-0f0836f947f78b1e4"   # Existing Terraform VPC (VPC limit workaround)
+        value: "vpc-09bb44089366662c7"   # Existing Terraform VPC (VPC limit workaround)
       - name: subnetID
-        value: "subnet-00d6efd5dd3376113"  # Public subnet eu-west-1a in Terraform VPC
+        value: "subnet-078a35793cd8a5c8c"  # 10.12.3.0/24 Public subnet eu-west-1a in Terraform VPC
       - name: publicIP
         value: true   # Required for public subnet (no NAT gateway)

@@ -39,14 +39,14 @@ spec:
     kind: AWSClusterStaticIdentity
     name: cluster-identity   # Secret created by Ansible in namespace "default"
   # Reuse existing VPC to avoid hitting the AWS VPC limit (default: 5 per region).
-  # The VPC and subnet were created by Terraform for the management cluster.
+  # The VPC and subnets were created by Terraform for the management cluster.
   # EKS requires at least 2 subnets in different AZs.
   network:
     vpc:
-      id: "vpc-0f0836f947f78b1e4"
+      id: "vpc-09bb44089366662c7"
     subnets:
-      - id: "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a (management + workload)
-      - id: "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b (EKS second AZ)
+      - id: "subnet-0dc15c2d52e736c58"   # 10.12.1.0/24 eu-west-1a
+      - id: "subnet-07260b70f0eee6e2c"   # 10.12.2.0/24 eu-west-1b
 ---
 # Cluster — top-level CAPI object; wires together infrastructure and control plane.
 apiVersion: cluster.x-k8s.io/v1beta1
@@ -81,8 +81,8 @@ spec:
   # Explicitly specify subnets so CAPA can determine placement for the nodegroup.
   # EKS nodegroups require subnets in the same VPC as the control plane.
   subnetIDs:
-    - "subnet-00d6efd5dd3376113"   # 10.11.1.0/24 eu-west-1a
-    - "subnet-04984f4c64f54f700"   # 10.11.2.0/24 eu-west-1b
+    - "subnet-0dc15c2d52e736c58"   # 10.12.1.0/24 eu-west-1a
+    - "subnet-07260b70f0eee6e2c"   # 10.12.2.0/24 eu-west-1b
 ---
 # MachinePool — CAPI wrapper that references the AWSManagedMachinePool above.
 # Bootstrap is handled automatically by EKS — no KubeadmConfig or RKE2Config needed.

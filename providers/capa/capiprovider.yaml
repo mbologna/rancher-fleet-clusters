@@ -1,9 +1,11 @@
 # CAPA (Cluster API Provider AWS) CAPIProvider
 # Installs the AWS infrastructure provider into the management cluster.
 #
-# Credentials: Ansible creates a Secret named "cluster-identity" in namespace "default".
-# Each Cluster references it via AWSClusterStaticIdentity (defined in clusters/aws-rke2-example/).
-# This approach allows per-cluster identity isolation and does not require env vars.
+# Credentials:
+#   - capa-credentials (capa-system): created by Turtles from spec.variables. Patch it
+#     with AWS_B64ENCODED_CREDENTIALS after Fleet deploys (see README).
+#   - cluster-identity (capa-system): pre-created by the user, referenced by
+#     AWSClusterStaticIdentity to authenticate CAPI cluster operations.
 #
 # One-time IAM bootstrap (run once per AWS account):
 #   clusterawsadm bootstrap iam create-cloudformation-stack

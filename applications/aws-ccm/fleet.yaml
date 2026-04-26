@@ -1,5 +1,8 @@
 defaultNamespace: kube-system
 
+dependsOn:
+  - name: capi-cluster-templates-providers-capa
+
 # Deploy AWS CCM only to clusters labeled infrastructure=aws.
 # Add this label to your Cluster CR:
 #   metadata:

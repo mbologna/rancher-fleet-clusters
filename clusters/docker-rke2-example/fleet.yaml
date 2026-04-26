@@ -1,1 +1,4 @@
 defaultNamespace: default
+
+dependsOn:
+  - name: capi-cluster-templates-clusterclasses-docker-rke2
