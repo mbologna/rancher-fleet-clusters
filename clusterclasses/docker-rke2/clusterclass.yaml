@@ -1,0 +1,183 @@
+# ClusterClass and infrastructure templates for Docker + RKE2.
+# Used by CAPD (Cluster API Provider Docker) with the RKE2 bootstrap/control-plane provider.
+# Nodes are Docker containers running kindest/node images — ideal for local dev and CI.
+---
+# HAProxy ConfigMap referenced by DockerClusterTemplate.loadBalancer.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: docker-rke2-lb-config
+  namespace: default
+  annotations:
+    helm.sh/resource-policy: keep
+data:
+  value: |-
+    global
+      log /dev/log local0
+      log /dev/log local1 notice
+      daemon
+      maxconn 100000
+
+    resolvers docker
+      nameserver dns 127.0.0.11:53
+
+    defaults
+      log global
+      mode tcp
+      option dontlognull
+      timeout connect 5000
+      timeout client 50000
+      timeout server 50000
+      default-server init-addr none
+
+    frontend stats
+      mode http
+      bind *:8404
+      stats enable
+      stats uri /stats
+      stats refresh 1s
+      stats admin if TRUE
+
+    frontend control-plane
+      bind *:{{ .FrontendControlPlanePort }}
+      {{ if .IPv6 -}}
+      bind :::{{ .FrontendControlPlanePort }};
+      {{- end }}
+      default_backend kube-apiservers
+
+    backend kube-apiservers
+      option httpchk GET /healthz
+      {{range $server, $backend := .BackendServers }}
+      server {{ $server }} {{ JoinHostPort $backend.Address $.BackendControlPlanePort }} check check-ssl verify none resolvers docker resolve-prefer {{ if $.IPv6 -}} ipv6 {{- else -}} ipv4 {{- end }}
+      {{- end}}
+
+    frontend rke2-join
+      bind *:9345
+      {{ if .IPv6 -}}
+      bind :::9345;
+      {{- end }}
+      default_backend rke2-servers
+
+    backend rke2-servers
+      option httpchk GET /v1-rke2/readyz
+      http-check expect status 403
+      {{range $server, $backend := .BackendServers }}
+      server {{ $server }} {{ $backend.Address }}:9345 check check-ssl verify none
+      {{- end}}
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: ClusterClass
+metadata:
+  name: docker-rke2
+  namespace: default
+spec:
+  infrastructure:
+    templateRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: DockerClusterTemplate
+      name: docker-rke2-cluster-template
+  controlPlane:
+    templateRef:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+      kind: RKE2ControlPlaneTemplate
+      name: docker-rke2-control-plane
+    machineInfrastructure:
+      templateRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        kind: DockerMachineTemplate
+        name: docker-rke2-control-plane-machine
+  workers:
+    machineDeployments:
+      - class: default-worker
+        bootstrap:
+          templateRef:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            name: docker-rke2-worker-bootstrap
+        infrastructure:
+          templateRef:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: DockerMachineTemplate
+            name: docker-rke2-worker-machine
+  variables:
+    - name: dockerImage
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: The kindest/node image to use for cluster nodes.
+  patches:
+    - name: dockerImage
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: DockerMachineTemplate
+            matchResources:
+              controlPlane: true
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/customImage
+              valueFrom:
+                variable: dockerImage
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerClusterTemplate
+metadata:
+  name: docker-rke2-cluster-template
+  namespace: default
+spec:
+  template:
+    spec:
+      loadBalancer:
+        customHAProxyConfigTemplateRef:
+          name: docker-rke2-lb-config
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: docker-rke2-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      rolloutStrategy:
+        type: RollingUpdate
+        rollingUpdate:
+          maxSurge: 1
+      serverConfig:
+        cloudProviderName: external
+        disableComponents:
+          kubernetesComponents:
+            - cloudController
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerMachineTemplate
+metadata:
+  name: docker-rke2-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      bootstrapTimeout: 15m
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DockerMachineTemplate
+metadata:
+  name: docker-rke2-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      bootstrapTimeout: 15m
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: RKE2ConfigTemplate
+metadata:
+  name: docker-rke2-worker-bootstrap
+  namespace: default
+spec:
+  template:
+    spec: {}

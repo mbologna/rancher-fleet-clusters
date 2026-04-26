@@ -1,0 +1,12 @@
+defaultNamespace: kube-system
+
+# Deploy AWS CCM only to clusters labeled infrastructure=aws.
+# Add this label to your Cluster CR:
+#   metadata:
+#     labels:
+#       infrastructure: aws
+targetCustomizations:
+  - name: aws
+    clusterSelector:
+      matchLabels:
+        infrastructure: aws

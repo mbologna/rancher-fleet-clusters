@@ -1,0 +1,99 @@
+# AWS Cloud Controller Manager — deployed to AWS workload clusters after import.
+#
+# CCM is required on CAPA-provisioned clusters to:
+#   1. Set spec.providerID on nodes (CAPI Machine controller uses this to correlate)
+#   2. Remove node.cloudprovider.kubernetes.io/uninitialized taint (unschedulable without it)
+#   3. Add cloud provider labels (instance-type, zone, region) to nodes
+#
+# Fleet deploys this to any imported cluster labeled: infrastructure=aws
+# Add that label to your Cluster CR in clusters/*/cluster.yaml.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cloud-controller-manager
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:cloud-controller-manager
+rules:
+  - apiGroups: ['']
+    resources: [events]
+    verbs: [create, patch, update]
+  - apiGroups: ['']
+    resources: [nodes]
+    verbs: ['*']
+  - apiGroups: ['']
+    resources: [nodes/status]
+    verbs: [patch]
+  - apiGroups: ['']
+    resources: [services, services/status]
+    verbs: [list, patch, update, watch]
+  - apiGroups: ['']
+    resources: [serviceaccounts]
+    verbs: [create, get]
+  - apiGroups: ['']
+    resources: [persistentvolumes]
+    verbs: [get, list, update, watch]
+  - apiGroups: ['']
+    resources: [endpoints]
+    verbs: [create, get, list, watch, update]
+  - apiGroups: ['']
+    resources: [configmaps]
+    verbs: [get, list, watch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [create, get, list, watch, update]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:cloud-controller-manager
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:cloud-controller-manager
+subjects:
+  - kind: ServiceAccount
+    name: cloud-controller-manager
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: aws-cloud-controller-manager
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      k8s-app: aws-cloud-controller-manager
+  template:
+    metadata:
+      labels:
+        k8s-app: aws-cloud-controller-manager
+    spec:
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: 'true'
+      tolerations:
+        - key: node.cloudprovider.kubernetes.io/uninitialized
+          value: 'true'
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+      serviceAccountName: cloud-controller-manager
+      hostNetwork: true
+      containers:
+        - name: aws-cloud-controller-manager
+          image: registry.k8s.io/provider-aws/cloud-controller-manager:v1.30.1
+          command:
+            - /bin/aws-cloud-controller-manager
+            - --v=2
+            - --cloud-provider=aws
+            - --allocate-node-cidrs=false
+            - --configure-cloud-routes=false
+          resources:
+            requests:
+              cpu: 200m
+      priorityClassName: system-node-critical

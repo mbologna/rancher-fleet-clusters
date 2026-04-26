@@ -34,6 +34,7 @@ metadata:
   namespace: default
   labels:
     cluster-api.cattle.io/rancher-auto-import: "true"
+    infrastructure: aws
 spec:
   clusterNetwork:
     pods:

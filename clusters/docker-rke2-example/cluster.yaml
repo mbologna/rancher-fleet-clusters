@@ -1,0 +1,42 @@
+# Example Docker + RKE2 workload cluster using the docker-rke2 ClusterClass.
+# Nodes are Docker containers — useful for local CAPI development and testing.
+#
+# Prerequisites:
+#   - CAPD provider installed (providers/docker)
+#   - CAPRKE2 provider installed (providers/rke2)
+#   - docker-rke2 ClusterClass applied (clusterclasses/docker-rke2)
+#
+# The rancher-auto-import label causes Turtles to automatically register
+# this cluster with Rancher Manager once it becomes Provisioned.
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: docker-rke2-example
+  namespace: default
+  labels:
+    cluster-api.cattle.io/rancher-auto-import: "true"
+  annotations:
+    cluster-api.cattle.io/upstream-system-agent: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks:
+        - 10.10.0.0/16
+    services:
+      cidrBlocks:
+        - 10.11.0.0/16
+    serviceDomain: cluster.local
+  topology:
+    classRef:
+      name: docker-rke2
+    version: v1.34.6+rke2r3
+    controlPlane:
+      replicas: 1
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 1
+    variables:
+      - name: dockerImage
+        value: kindest/node:v1.34.6
