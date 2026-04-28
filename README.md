@@ -108,20 +108,10 @@ kubectl create secret generic ironic-credentials \
 
 ### 3. Register this repo in Fleet
 
+A ready-made manifest lives at the root of this repo:
+
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: fleet.cattle.io/v1alpha1
-kind: GitRepo
-metadata:
-  name: capi-cluster-templates
-  namespace: fleet-local
-spec:
-  repo: https://github.com/mbologna/rancher-fleet-clusters
-  branch: main
-  keepResources: true
-  targets:
-    - clusterSelector: {}
-EOF
+kubectl apply -f gitrepo.yaml
 ```
 
 Fleet reconciles all paths — installs CAPI providers, deploys ClusterClasses, and provisions
@@ -153,6 +143,72 @@ spec:
   secretRef: cluster-identity
   allowedNamespaces: {}
 EOF
+```
+
+---
+
+## Re-deploying Rancher
+
+When the Rancher management cluster is rebuilt (e.g. via
+[rancher-platform](https://github.com/mbologna/rancher-platform)), CAPI loses its state but the
+EC2 instances it previously created keep running. Follow these steps after every re-deploy:
+
+### 1. Terminate orphaned CAPI EC2 instances
+
+The old instances remain tagged with the CAPA cluster tag and get re-registered into the new NLB.
+They serve stale TLS CA certs, causing worker nodes to fail joining the cluster.
+
+```bash
+# List all EC2 instances still tagged for a given CAPI cluster
+aws ec2 describe-instances --region eu-west-1 \
+  --filters "Name=tag:sigs.k8s.io/cluster-api-provider-aws/cluster/<cluster-name>,Values=owned" \
+  --query 'Reservations[*].Instances[*].{ID:InstanceId,Name:Tags[?Key==`Name`]|[0].Value,State:State.Name}' \
+  --output table
+
+# Terminate any instances that are NOT tracked by a current CAPI Machine object
+aws ec2 terminate-instances --region eu-west-1 --instance-ids <orphan-id> ...
+```
+
+Do this **before** (or immediately after) registering Fleet — before CAPI spawns new machines.
+
+### 2. Re-register Fleet
+
+```bash
+kubectl apply -f gitrepo.yaml
+```
+
+### 3. Re-patch CAPA credentials
+
+After the CAPA CAPIProvider reaches `ProviderInstalled=True`, patch the credentials secret
+(Turtles recreates it on every deploy):
+
+```bash
+B64_CREDS=$(printf "[default]\naws_access_key_id = <id>\naws_secret_access_key = <secret>" \
+  | base64 | tr -d '\n')
+kubectl patch secret capa-credentials -n capa-system \
+  --type=merge \
+  -p "{\"data\":{\"AWS_B64ENCODED_CREDENTIALS\":\"${B64_CREDS}\"}}"
+```
+
+### 4. Re-import previously provisioned clusters
+
+Rancher's TLS certificate changes on every redeploy. Any cluster whose `cattle-cluster-agent`
+was deployed against the old Rancher instance will fail to reconnect. Update each agent by
+re-applying the cluster's import manifest:
+
+```bash
+# Get the import manifest URL for cluster <cluster-id> (e.g. c-8f7n5)
+MANIFEST=$(kubectl get secret -n cattle-system \
+  $(kubectl get clusterregistrationtoken -n cattle-system -o jsonpath='{.items[0].metadata.name}') \
+  -o jsonpath='{.data.manifestUrl}' | base64 -d)
+
+# Or retrieve from the Rancher API
+curl -sk -H "Authorization: Bearer <token>" \
+  "https://<rancher-host>/v3/clusterregistrationtokens?clusterId=<cluster-id>" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['manifestUrl'])"
+
+# Apply to the downstream cluster
+curl -sk <manifest-url> | kubectl --kubeconfig <downstream-kubeconfig> apply -f -
 ```
 
 ---
