@@ -1,0 +1,20 @@
+# Bootstrap: register this repo as a Fleet GitRepo on the management cluster.
+# Apply once after a fresh Rancher install:
+#
+#   kubectl apply -f gitrepo.yaml --kubeconfig ~/.kube/rancher-platform.yaml
+#
+# Fleet then reconciles all paths in this repo (providers → clusterclasses → clusters)
+# and keeps them in sync on every push.
+apiVersion: fleet.cattle.io/v1alpha1
+kind: GitRepo
+metadata:
+  name: capi-cluster-templates
+  namespace: fleet-local
+spec:
+  repo: https://github.com/mbologna/rancher-fleet-clusters
+  branch: main
+  # Prevent Fleet from deleting CAPI resources if the GitRepo is removed or
+  # paths change — avoids accidental cluster teardown.
+  keepResources: true
+  targets:
+    - clusterSelector: {}
