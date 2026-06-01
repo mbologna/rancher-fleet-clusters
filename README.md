@@ -1,6 +1,6 @@
 # rancher-fleet-clusters
 
-> A collection of Cluster API (CAPI) examples — providers, ClusterClasses, and clusters —
+> A collection of Cluster API (CAPI) examples (providers, ClusterClasses, and clusters)
 > that [Fleet](https://fleet.rancher.io) reconciles and deploys via
 > [Rancher Turtles](https://turtles.docs.rancher.com) on Rancher Manager.
 
@@ -30,7 +30,7 @@ applications/
   aws-ccm/       AWS Cloud Controller Manager — deployed to clusters labelled infrastructure=aws
 ```
 
-Every cluster carries `cluster-api.cattle.io/rancher-auto-import: "true"` — Turtles imports it
+Every cluster carries `cluster-api.cattle.io/rancher-auto-import: "true"`. Turtles imports it
 into Rancher automatically when it becomes Ready.
 
 ---
@@ -75,8 +75,11 @@ After registering Fleet (step 3) and waiting for the CAPA CAPIProvider to appear
 installation:
 
 ```bash
-B64_CREDS=$(printf "[default]\naws_access_key_id = <id>\naws_secret_access_key = <secret>" \
-  | base64 | tr -d '\n')
+B64_CREDS=$(printf "[default]
+aws_access_key_id = <id>
+aws_secret_access_key = <secret>" \
+  | base64 | tr -d '
+')
 kubectl patch secret capa-credentials -n capa-system \
   --type=merge \
   -p "{\"data\":{\"AWS_B64ENCODED_CREDENTIALS\":\"${B64_CREDS}\"}}"
@@ -183,8 +186,11 @@ After the CAPA CAPIProvider reaches `ProviderInstalled=True`, patch the credenti
 (Turtles recreates it on every deploy):
 
 ```bash
-B64_CREDS=$(printf "[default]\naws_access_key_id = <id>\naws_secret_access_key = <secret>" \
-  | base64 | tr -d '\n')
+B64_CREDS=$(printf "[default]
+aws_access_key_id = <id>
+aws_secret_access_key = <secret>" \
+  | base64 | tr -d '
+')
 kubectl patch secret capa-credentials -n capa-system \
   --type=merge \
   -p "{\"data\":{\"AWS_B64ENCODED_CREDENTIALS\":\"${B64_CREDS}\"}}"
@@ -283,5 +289,5 @@ No ClusterClass — control plane managed entirely by AWS.
 
 ## Related
 
-**[rancher-platform](https://github.com/mbologna/rancher-platform)** — Terraform + Ansible to get
+**[rancher-platform](https://github.com/mbologna/rancher-platform)**: Terraform + Ansible to get
 a running Rancher + Turtles instance (the prerequisite for this repo).
