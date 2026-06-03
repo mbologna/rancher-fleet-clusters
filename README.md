@@ -117,7 +117,7 @@ A ready-made manifest lives at the root of this repo:
 kubectl apply -f gitrepo.yaml
 ```
 
-Fleet reconciles all paths — installs CAPI providers, deploys ClusterClasses, and provisions
+Fleet reconciles all paths: installs CAPI providers, deploys ClusterClasses, and provisions
 the example clusters. Check progress:
 
 ```bash
@@ -172,7 +172,7 @@ aws ec2 describe-instances --region eu-west-1 \
 aws ec2 terminate-instances --region eu-west-1 --instance-ids <orphan-id> ...
 ```
 
-Do this **before** (or immediately after) registering Fleet — before CAPI spawns new machines.
+Do this **before** (or immediately after) registering Fleet, before CAPI spawns new machines.
 
 ### 2. Re-register Fleet
 
