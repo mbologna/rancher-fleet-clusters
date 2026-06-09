@@ -46,7 +46,7 @@ Don't have that yet? → [rancher-platform](https://github.com/mbologna/rancher-
 
 ### 2. Provider credentials *(skip sections that don't apply)*
 
-#### Docker — no credentials needed
+#### Docker: no credentials needed
 
 Requires Docker running on the management node. Ships out of the box with rancher-platform.
 
@@ -86,7 +86,7 @@ kubectl patch secret capa-credentials -n capa-system \
 ```
 
 > **VPC/subnet IDs**: `clusters/aws-rke2-example/cluster.yaml` and
-> `clusters/aws-eks-example/cluster.yaml` contain hardcoded VPC and subnet IDs — update
+> `clusters/aws-eks-example/cluster.yaml` contain hardcoded VPC and subnet IDs. Update
 > them to match your own infrastructure before use.
 
 > **Cost note:** EKS charges ~$0.10/hr for the managed control plane.
@@ -126,11 +126,11 @@ kubectl get bundles -n fleet-local
 ```
 
 > **`keepResources: true`** prevents Fleet from deleting CAPI resources if the GitRepo is
-> removed or paths change — avoids accidental cluster teardown.
+> removed or paths change, avoiding accidental cluster teardown.
 
 ### 4. Create the AWS cluster identity *(AWS only)*
 
-`AWSClusterStaticIdentity` is a CRD installed by CAPA — it won't exist until Fleet has deployed
+`AWSClusterStaticIdentity` is a CRD installed by CAPA; it won't exist until Fleet has deployed
 the provider. Wait for the CAPA provider to be ready, then create the identity:
 
 ```bash
@@ -221,8 +221,7 @@ curl -sk <manifest-url> | kubectl --kubeconfig <downstream-kubeconfig> apply -f 
 
 ## Customising clusters
 
-The `clusters/` examples are your starting point. Fork this repo, modify an example, push —
-Fleet reconciles the change automatically.
+The `clusters/` examples are your starting point. Fork this repo, modify an example, push. Fleet reconciles the change automatically.
 
 ```bash
 cp -r clusters/aws-rke2-example clusters/my-cluster
@@ -253,7 +252,7 @@ git add clusters/my-cluster && git commit -m "feat: add my-cluster" && git push
 
 ### aws-eks
 
-No ClusterClass — control plane managed entirely by AWS.
+No ClusterClass: control plane managed entirely by AWS.
 
 | Field        | Default    | Description                                 |
 |--------------|------------|---------------------------------------------|
