@@ -4,4 +4,6 @@ metadata:
   name: cluster-identity
 spec:
   secretRef: cluster-identity
-  allowedNamespaces: {}
+  allowedNamespaces:
+    list:
+      - default

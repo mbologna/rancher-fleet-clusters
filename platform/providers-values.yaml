@@ -1,0 +1,36 @@
+# Merge into the platform-owned rancher-turtles-providers chart at Turtles v0.27.2.
+# Keep existing provider namespaces during adoption; do not install duplicates.
+providers:
+  bootstrapRKE2:
+    enabled: true
+    namespace: cattle-turtles-system
+    # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
+    version: v0.25.2
+    enableAutomaticUpdate: false
+  controlplaneRKE2:
+    enabled: true
+    namespace: cattle-turtles-system
+    # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
+    version: v0.25.2
+    enableAutomaticUpdate: false
+  infrastructureAWS:
+    enabled: true
+    namespace: capa-system
+    # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api-provider-aws
+    version: v2.11.1
+    enableAutomaticUpdate: false
+    configSecret:
+      name: capa-credentials
+      namespace: capa-system
+    variables:
+      AWS_REGION: eu-west-1
+      EXP_MACHINE_POOL: "true"
+  infrastructureDocker:
+    enabled: true
+    namespace: cattle-turtles-system
+    # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
+    version: v1.13.3
+    enableAutomaticUpdate: false
+  addonFleet:
+    enabled: false
+    namespace: fleet-addon-system

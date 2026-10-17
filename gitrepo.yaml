@@ -5,6 +5,8 @@
 #
 # Fleet reconciles the resource directories and keeps them in sync on every
 # push.
+# Run deployment and platform preflight checks before applying; all AWS examples
+# remain enabled and create billable resources once configured.
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -14,7 +16,6 @@ spec:
   repo: https://github.com/mbologna/rancher-fleet-clusters
   branch: main
   paths:
-    - providers
     - clusterclasses
     - identities
     - clusters

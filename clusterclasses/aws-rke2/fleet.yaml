@@ -1,9 +1,5 @@
 defaultNamespace: default
 
-dependsOn:
-  - name: capi-cluster-templates-providers-rke2
-  - name: capi-cluster-templates-providers-capa
-
 # AWSClusterTemplate and AWSMachineTemplate specs are immutable in CAPA v2
 # (the admission webhook rejects any spec modification after first creation).
 # Tell Fleet's diff engine to ignore the spec of these resources to avoid
@@ -12,9 +8,16 @@ diff:
   comparePatches:
     - apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: AWSClusterTemplate
+      name: ^aws-rke2-cluster$
       operations:
         - {op: remove, path: /spec}
     - apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: AWSMachineTemplate
+      name: ^aws-rke2-control-plane-machine$
+      operations:
+        - {op: remove, path: /spec}
+    - apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSMachineTemplate
+      name: ^aws-rke2-worker-machine$
       operations:
         - {op: remove, path: /spec}

@@ -1,0 +1,15 @@
+# Merge into the platform-owned rancher-turtles release, never Fleet.
+# renovate: datasource=github-releases depName=rancher/rancher
+# rancher-version: v2.15.2
+# renovate: datasource=github-releases depName=rancher/turtles
+# chart-version: v0.27.2
+cluster-api-operator:
+  cluster-api:
+    enabled: true
+    configSecret:
+      name: repo-capi-config
+    core:
+      namespace: cattle-capi-system
+      # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
+      version: v1.13.3
+      enableAutomaticUpdate: false

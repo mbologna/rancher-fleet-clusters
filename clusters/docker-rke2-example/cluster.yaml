@@ -1,10 +1,10 @@
-# Example Docker + RKE2 workload cluster using the docker-rke2 ClusterClass.
+# Fresh-install Docker + RKE2 example using docker-rke2-v136.
+# Preserve the old class/version in your fork for existing clusters.
 # Nodes are Docker containers — useful for local CAPI development and testing.
 #
 # Prerequisites:
-#   - CAPD provider installed (providers/docker)
-#   - CAPRKE2 provider installed (providers/rke2)
-#   - docker-rke2 ClusterClass applied (clusterclasses/docker-rke2)
+#   - Platform-owned CAPD and CAPRKE2 providers are Ready
+#   - docker-rke2-v136 ClusterClass applied (clusterclasses/docker-rke2)
 #
 # The rancher-auto-import label causes Turtles to automatically register
 # this cluster with Rancher Manager once it becomes Provisioned.
@@ -28,8 +28,9 @@ spec:
     serviceDomain: cluster.local
   topology:
     classRef:
-      name: docker-rke2
-    version: v1.34.6+rke2r3
+      name: docker-rke2-v136
+    # renovate: datasource=github-releases depName=rancher/rke2 versioning=regex:^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\+rke2r(?<build>\d+)$
+    version: v1.36.4+rke2r1
     controlPlane:
       replicas: 1
     workers:
@@ -39,4 +40,4 @@ spec:
           replicas: 1
     variables:
       - name: dockerImage
-        value: kindest/node:v1.34.6
+        value: kindest/node:v1.36.1

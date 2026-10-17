@@ -1,4 +1,5 @@
-# ClusterClass: aws-rke2
+# Legacy ClusterClass: aws-rke2. Retained unchanged for existing clusters.
+# New clusters use aws-rke2-v136; do not update immutable templates in place.
 # Infrastructure: CAPA (AWS EC2 machines)
 # Control plane:  CAPRKE2 (RKE2ControlPlane)
 # Workers:        CAPRKE2 (RKE2ConfigTemplate)

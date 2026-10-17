@@ -1,5 +1,7 @@
 # Example: AWS RKE2 cluster via CAPA + CAPRKE2
-# Uses the aws-rke2 ClusterClass defined in clusterclasses/aws-rke2/
+# Uses the aws-rke2-v136 ClusterClass defined in clusterclasses/aws-rke2/
+# Fresh-install defaults only: preserve the old class/version for existing clusters.
+# Internal NLB: management clients need a routed connection to the VPC.
 # CAPI contract: v1beta2
 #
 # Before applying, fill in the variables below:
@@ -23,7 +25,8 @@ metadata:
   labels:
     cluster-api.cattle.io/rancher-auto-import: "true"
     infrastructure: aws
-    ccm: aws
+    ccm: aws-v136
+    ccm-version: "1.36"
 spec:
   clusterNetwork:
     pods:
@@ -34,8 +37,9 @@ spec:
         - 10.96.0.0/12
   topology:
     classRef:
-      name: aws-rke2
-    version: v1.33.10+rke2r3
+      name: aws-rke2-v136
+    # renovate: datasource=github-releases depName=rancher/rke2 versioning=regex:^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\+rke2r(?<build>\d+)$
+    version: v1.36.4+rke2r1
     controlPlane:
       replicas: 1   # increase to 3 for HA
     workers:
@@ -61,3 +65,6 @@ spec:
       - name: apiServerAllowedCIDRs
         value:
           - "REPLACE_WITH_TRUSTED_CLIENT_CIDR"
+      - name: nodeCIDRs
+        value:
+          - "10.0.0.0/16"   # matches the CAPA-created VPC; change for an existing VPC

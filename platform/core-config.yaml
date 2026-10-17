@@ -1,0 +1,9 @@
+# Platform prerequisite, applied before the core CAPI provider is reconciled.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-capi-config
+  namespace: cattle-capi-system
+type: Opaque
+stringData:
+  CLUSTER_TOPOLOGY: "true"

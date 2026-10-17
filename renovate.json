@@ -1,0 +1,69 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "automerge": false,
+  "ignoreUnstable": true,
+  "dependencyDashboard": true,
+  "ignorePaths": [
+    "clusterclasses/aws-rke2/clusterclass.yaml",
+    "clusterclasses/aws-rke2/aws-ccm.yaml",
+    "clusterclasses/docker-rke2/clusterclass.yaml"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^platform/.*-values\\.yaml$/", "/^clusters/.*\\/cluster\\.yaml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\s+(?:# (?:chart|rancher)-version:|version:) (?<currentValue>\\S+)"
+      ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^clusters/docker-rke2-example/cluster\\.yaml$/"],
+      "matchStrings": ["value: (?<depName>kindest/node):(?<currentValue>\\S+)"],
+      "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/validate\\.yaml$/"],
+      "matchStrings": ["go install (?<depName>github\\.com/mikefarah/yq/v4)@(?<currentValue>v\\S+)"],
+      "datasourceTemplate": "go"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^clusterclasses/aws-rke2/aws-ccm-v136\\.yaml$/"],
+      "matchStrings": ["image: (?<depName>registry\\.k8s\\.io/provider-aws/cloud-controller-manager):(?<currentValue>\\S+)"],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Review the tested Rancher/Turtles provider set together; grouping does not prove compatibility.",
+      "matchDepNames": [
+        "rancher/turtles",
+        "rancher/rancher",
+        "kubernetes-sigs/cluster-api",
+        "kubernetes-sigs/cluster-api-provider-aws",
+        "rancher/cluster-api-provider-rke2"
+      ],
+      "groupName": "Turtles provider stack",
+      "dependencyDashboardApproval": true,
+      "allowedVersions": "!/-(alpha|beta|rc|dev)/"
+    },
+    {
+      "matchDepNames": ["rancher/rke2", "kindest/node", "registry.k8s.io/provider-aws/cloud-controller-manager"],
+      "groupName": "RKE2 and AWS CCM",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "A new minor needs new immutable templates and a CCM migration.",
+      "matchDepNames": ["rancher/rke2", "kindest/node", "registry.k8s.io/provider-aws/cloud-controller-manager"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    }
+  ]
+}

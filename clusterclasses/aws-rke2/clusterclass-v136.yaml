@@ -1,0 +1,526 @@
+# ClusterClass: aws-rke2-v136 (new clusters; legacy aws-rke2 is retained)
+# Infrastructure: CAPA (AWS EC2 machines)
+# Control plane:  CAPRKE2 (RKE2ControlPlane)
+# Workers:        CAPRKE2 (RKE2ConfigTemplate)
+# CAPI core v1.13.3 and CAPRKE2 v0.25.2 use the v1beta2 contract. CAPA v2.11.1
+# uses the v1beta1 provider contract; its infrastructure resource CRDs serve v1beta2.
+# Note: v1beta2 ClusterClass uses templateRef (not ref) for all template references
+#
+# Variables exposed by this ClusterClass:
+#   region                 - AWS region (default: eu-west-1)
+#   sshKeyName             - Optional EC2 key pair name (default: empty)
+#   controlPlaneMachineType - EC2 type for control plane nodes (default: t3.large)
+#   workerMachineType      - EC2 type for worker nodes (default: t3.large)
+#   amiID                  - REQUIRED: AMI ID of an OS image for the EC2 instances.
+#                            CAPRKE2 installs RKE2 at boot via cloud-init, so any
+#                            standard base OS image works (Ubuntu 22.04, RHEL 9, etc.).
+#                            Find AMI IDs in the AWS Console or via:
+#                              aws ec2 describe-images --owners 099720109477 \
+#                                --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64*" \
+#                                --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
+#                                --region eu-west-1
+#   cni                    - CNI plugin (default: calico)
+#   awsClusterIdentityName - AWSClusterStaticIdentity resource name (default: cluster-identity)
+#   apiServerAllowedCIDRs - Required trusted CIDR ranges for Kubernetes API access.
+#
+# Prerequisites (one-time per AWS account):
+#   clusterawsadm bootstrap iam create-cloudformation-stack
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: ClusterClass
+metadata:
+  name: aws-rke2-v136
+  namespace: default
+spec:
+  controlPlane:
+    templateRef:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+      kind: RKE2ControlPlaneTemplate
+      name: aws-rke2-v136-control-plane
+    machineInfrastructure:
+      templateRef:
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        kind: AWSMachineTemplate
+        name: aws-rke2-v136-control-plane-machine
+
+  infrastructure:
+    templateRef:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+      kind: AWSClusterTemplate
+      name: aws-rke2-v136-cluster
+
+  workers:
+    machineDeployments:
+      - class: default-worker
+        bootstrap:
+          templateRef:
+            apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+            kind: RKE2ConfigTemplate
+            name: aws-rke2-v136-worker
+        infrastructure:
+          templateRef:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            name: aws-rke2-v136-worker-machine
+
+  variables:
+    - name: region
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "eu-west-1"
+    - name: sshKeyName
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          description: "Optional EC2 key pair for SSH access."
+    - name: controlPlaneMachineType
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: workerMachineType
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "t3.large"
+    - name: amiID
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "AMI ID for EC2 instances. Use any standard OS AMI (Ubuntu 22.04, RHEL 9, etc.) — CAPRKE2 installs RKE2 at boot."
+    - name: cni
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "calico"
+    - name: awsClusterIdentityName
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "Name of the AWSClusterStaticIdentity resource referencing AWS credentials."
+          default: "cluster-identity"
+    - name: vpcID
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          description: "Existing VPC ID to use instead of creating a new one. Leave empty to let CAPA create a VPC."
+    - name: subnetID
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: ""
+          description: "Existing subnet ID for EC2 instances. Required when vpcID is set."
+    - name: publicIP
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
+          description: "Assign public IPs to EC2 instances. Set to true when using a public subnet without NAT gateway."
+    - name: apiServerAllowedCIDRs
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: "Trusted CIDR ranges permitted to access the Kubernetes API."
+    - name: nodeCIDRs
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: "Private node subnet CIDRs. The internal NLB requires routed access from nodes and management clients."
+
+  patches:
+    - name: awsClusterTemplate
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/region
+              valueFrom:
+                variable: region
+    - name: sshKeyName
+      enabledIf: '{{ ne .sshKeyName "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+    - name: clusterIdentity
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/identityRef/name
+              valueFrom:
+                variable: awsClusterIdentityName
+    - name: apiServerIngress
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            # Rule index 1 is the Kubernetes API (port 6443) ingress rule below.
+            - op: replace
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/1/cidrBlocks
+              valueFrom:
+                variable: apiServerAllowedCIDRs
+    - name: nodeIngress
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/0/cidrBlocks
+              valueFrom:
+                variable: nodeCIDRs
+            - op: replace
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/2/cidrBlocks
+              valueFrom:
+                variable: nodeCIDRs
+    - name: existingVpc
+      enabledIf: '{{ ne .vpcID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/network/vpc
+              valueFrom:
+                template: '{"id": "{{ .vpcID }}"}'
+            - op: add
+              path: /spec/template/spec/network/subnets
+              valueFrom:
+                template: '[{"id": "{{ .subnetID }}", "resourceID": "{{ .subnetID }}", "isPublic": {{ .publicIP }}}]'
+    - name: awsMachineTemplateControlPlane
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: controlPlaneMachineType
+            - op: add
+              path: /spec/template/spec/ami/id
+              valueFrom:
+                variable: amiID
+    - name: controlPlaneSubnet
+      enabledIf: '{{ ne .subnetID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/subnet
+              valueFrom:
+                template: '{"id": "{{ .subnetID }}"}'
+            - op: add
+              path: /spec/template/spec/publicIP
+              valueFrom:
+                variable: publicIP
+    - name: awsMachineTemplateWorker
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/instanceType
+              valueFrom:
+                variable: workerMachineType
+            - op: add
+              path: /spec/template/spec/ami/id
+              valueFrom:
+                variable: amiID
+    - name: workerSubnet
+      enabledIf: '{{ ne .subnetID "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/subnet
+              valueFrom:
+                template: '{"id": "{{ .subnetID }}"}'
+            - op: add
+              path: /spec/template/spec/publicIP
+              valueFrom:
+                variable: publicIP
+    - name: rke2ControlPlaneTemplate
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+            kind: RKE2ControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/serverConfig/cni
+              valueFrom:
+                variable: cni
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSClusterTemplate
+metadata:
+  name: aws-rke2-v136-cluster
+  namespace: default
+spec:
+  template:
+    spec:
+      identityRef:
+        kind: AWSClusterStaticIdentity
+        name: cluster-identity   # overridden by clusterIdentity patch
+      bastion:
+        enabled: false
+      controlPlaneLoadBalancer:
+        # Internal endpoints avoid public-NLB hairpin routing and subnet scans.
+        # Management clients must have a route to the VPC.
+        scheme: internal
+        additionalListeners:
+          - port: 9345
+            protocol: TCP
+        ingressRules:
+          - description: RKE2 Control Plane
+            fromPort: 9345
+            cidrBlocks:
+              - 127.0.0.1/32   # replaced by nodeIngress
+            protocol: tcp
+            toPort: 9345
+          - cidrBlocks:
+              - 127.0.0.1/32   # replaced by apiServerIngress
+            description: Kubernetes API
+            fromPort: 6443
+            protocol: tcp
+            toPort: 6443
+          - description: Kubernetes API from nodes
+            fromPort: 6443
+            cidrBlocks:
+              - 127.0.0.1/32   # replaced by nodeIngress
+            protocol: tcp
+            toPort: 6443
+        loadBalancerType: nlb
+      network:
+        cni:
+          cniIngressRules:
+            - description: BGP
+              fromPort: 179
+              protocol: tcp
+              toPort: 179
+            - description: IP-in-IP
+              fromPort: -1
+              protocol: "4"
+              toPort: 65535
+            - description: VXLAN (Calico)
+              fromPort: 4789
+              protocol: udp
+              toPort: 4789
+            - description: Calico Typha
+              fromPort: 5473
+              protocol: tcp
+              toPort: 5473
+            - description: Calico Typha health check
+              fromPort: 9098
+              protocol: tcp
+              toPort: 9098
+            - description: Calico health check
+              fromPort: 9099
+              protocol: tcp
+              toPort: 9099
+        additionalControlPlaneIngressRules:
+          - description: RKE2 Control Plane additional group
+            fromPort: 9345
+            protocol: tcp
+            sourceSecurityGroupRoles:
+              - node
+              - controlplane
+              - apiserver-lb
+              - lb
+            toPort: 9345
+          - description: Etcd
+            fromPort: 2379
+            sourceSecurityGroupRoles:
+              - controlplane
+            protocol: tcp
+            toPort: 2379
+          - description: Etcd peer
+            fromPort: 2380
+            sourceSecurityGroupRoles:
+              - controlplane
+            protocol: tcp
+            toPort: 2380
+        vpc:
+          availabilityZoneUsageLimit: 1
+          cidrBlock: 10.0.0.0/16
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: RKE2ControlPlaneTemplate
+metadata:
+  name: aws-rke2-v136-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      preRKE2Commands:
+        - |
+          set -eu
+          TOKEN=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+            http://169.254.169.254/latest/api/token)
+          NODE_HOSTNAME=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/local-hostname)
+          test -n "$NODE_HOSTNAME"
+          hostnamectl set-hostname "$NODE_HOSTNAME"
+      agentConfig:
+        kubelet:
+          extraArgs:
+            - --cloud-provider=external
+            - --node-labels=capi-managed=true
+      serverConfig:
+        cloudProviderName: external
+        disableComponents:
+          kubernetesComponents:
+            - cloudController
+        etcd:
+          backupConfig:
+            retention: "10"
+            scheduleCron: "*/15 * * * *"
+      rolloutStrategy:
+        type: "RollingUpdate"
+        rollingUpdate:
+          maxSurge: 1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-rke2-v136-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      ami:
+        id: to_be_replaced   # overridden by awsMachineTemplateControlPlane patch
+      iamInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io"
+      instanceType: t3.large   # overridden by awsMachineTemplateControlPlane patch
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: AWSMachineTemplate
+metadata:
+  name: aws-rke2-v136-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      ami:
+        id: to_be_replaced   # overridden by awsMachineTemplateWorker patch
+      iamInstanceProfile: "nodes.cluster-api-provider-aws.sigs.k8s.io"
+      instanceType: t3.large   # overridden by awsMachineTemplateWorker patch
+      rootVolume:
+        size: 50
+        type: gp3
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: RKE2ConfigTemplate
+metadata:
+  name: aws-rke2-v136-worker
+  namespace: default
+spec:
+  template:
+    spec:
+      agentConfig:
+        kubelet:
+          extraArgs:
+            - --cloud-provider=external
+            - --node-labels=capi-managed=true
+      preRKE2Commands:
+        - |
+          set -eu
+          TOKEN=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            -X PUT -H "X-aws-ec2-metadata-token-ttl-seconds: 60" \
+            http://169.254.169.254/latest/api/token)
+          NODE_HOSTNAME=$(curl --fail --silent --show-error --connect-timeout 5 --max-time 15 \
+            -H "X-aws-ec2-metadata-token: $TOKEN" \
+            http://169.254.169.254/latest/meta-data/local-hostname)
+          test -n "$NODE_HOSTNAME"
+          hostnamectl set-hostname "$NODE_HOSTNAME"
