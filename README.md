@@ -1,275 +1,198 @@
 # rancher-fleet-clusters
 
-Fleet bundles for AWS EC2/RKE2, Docker/RKE2 and EKS managed node groups.
-Rancher Turtles imports each cluster when it becomes Ready.
+Fleet bundles that create Kubernetes clusters from a Rancher management cluster with Cluster API
+(CAPI). The repository holds ClusterClasses, a shared AWS identity and three example clusters.
+Rancher Turtles imports each cluster into Rancher once it is ready.
 
-**All three examples remain enabled.** AWS examples contain `REPLACE_WITH_*` values.
-Configure them before registering the GitRepo. Once configured, they can create billable
-EC2 instances, EKS clusters, load balancers, NAT gateways and storage.
+[rancher-platform](https://github.com/mbologna/rancher-platform) deploys the management cluster
+and installs the CAPI providers with the values in [`platform/`](platform/).
 
-## Supported stack
+| Example | Class | Infrastructure | Nodes |
+|---|---|---|---|
+| [`docker-rke2-example`](clusters/docker-rke2-example/cluster.yaml) | `docker-rke2-v136` | Docker containers on the management host (development only) | 1 control plane, 1 worker |
+| [`aws-rke2-example`](clusters/aws-rke2-example/cluster.yaml) | `aws-rke2-v136` | EC2 with an internal NLB | 1 control plane, 2 workers |
+| [`aws-eks-example`](clusters/aws-eks-example/cluster.yaml) | none | EKS with a managed node group | managed |
 
-The baseline follows [Turtles v0.27.2's pinned provider catalog][catalog] and
-[Rancher v2.15.2][rancher-release]. Platform configuration owns the providers; Fleet owns
-ClusterClasses, identities and clusters.
+Registering the GitRepo applies every example. Once their `REPLACE_WITH_*` values are filled
+in, the AWS examples create billable EC2 instances, load balancers, EKS control planes and
+storage. Delete the examples you do not want from your fork first.
 
-| Component | Version | API or contract |
-|---|---|---|
-| Rancher | v2.15.2 | Management Kubernetes v1.34–v1.36 |
-| Turtles | v0.27.2 | `CAPIProvider`: `turtles-capi.cattle.io/v1alpha1` |
-| CAPI core / CAPD | v1.13.3 | `v1beta2` |
-| CAPRKE2 | v0.25.2 | `v1beta2` |
-| CAPA | v2.11.1 | `v1beta1` provider contract; AWS resource APIs serve `v1beta2` |
-| New AWS / Docker RKE2 clusters | v1.36.4+rke2r1 | Rancher-supported v1.36 line |
-| Docker node image | kindest/node:v1.36.1 | Development only |
-| AWS CCM for new clusters | v1.36.1 | Kubernetes v1.36 |
+## Versions
 
-`v1beta2` is the current CAPI API used by official stable Turtles examples. Its name does
-not imply a prerelease controller. There is no general `v1` migration. Turtles v0.28 RCs
-are excluded. API maturity, controller versions and provider contracts are separate.
-
-The Prime catalog pins the provider versions above; the community catalog pins only core
-CAPI. Explicit chart values keep both installations reproducible. Newer independent provider
-releases need compatibility review before adoption. CAPA's older contract uses CAPI's
-transitional compatibility; do not upgrade core CAPI independently past that compatibility.
-
-Rancher v2.15 no longer supports Kubernetes v1.33. Existing clusters need a staged upgrade,
-not a direct application of these fresh-install defaults. See [migration](docs/migration.md).
-
-## Repository layout
-
-```text
-platform/                         chart values and core configuration; never Fleet bundles
-clusterclasses/aws-rke2/           legacy and versioned classes, AWS CCM resource sets
-clusterclasses/docker-rke2/        legacy and versioned Docker classes
-identities/aws/                   shared, cluster-scoped AWS identity
-clusters/aws-rke2-example/         1 control plane + 2 workers
-clusters/docker-rke2-example/      1 control plane + 1 worker
-clusters/aws-eks-example/          EKS control plane + managed node group
-```
-
-The GitRepo reconciles only `clusterclasses`, `identities` and `clusters`.
-`platform/`, automation and the GitRepo bootstrap manifest stay outside those paths.
-The GitRepo name `capi-cluster-templates` is part of the Fleet dependency names. If you
-rename it in a fork, update the `dependsOn` names too.
-
-## Fresh installation
-
-### 1. Configure platform-owned providers
-
-Install the supported Rancher/Turtles stack on management Kubernetes v1.34–v1.36.
-[rancher-platform](https://github.com/mbologna/rancher-platform) is the companion platform
-repository. Rancher installs Turtles as a system component; check the installed chart
-version rather than assuming Rancher bundles exactly v0.27.2.
-
-rancher-platform does this step when deployed with `-e capi_providers_enabled=true`. It
-installs the providers chart from the Turtles tag Rancher ships, with
-`platform/providers-values.yaml` from this repository, and creates the CAPA Secrets from its
-`secrets.yml`. It differs from the manual steps below in two ways:
-
-- RKE2 and Docker providers use the chart's namespaces (`rke2-bootstrap-system`,
-  `rke2-control-plane-system`, `capd-system`). On a fresh install Helm cannot adopt the
-  existing `cattle-turtles-system` namespace.
-- It skips `platform/core-config.yaml`. Rancher-managed Turtles already enables
-  `CLUSTER_TOPOLOGY` in the `capi-env-variables` Secret.
-
-CAPD also needs a Docker network named `kind` that pods can reach; rancher-platform creates
-it with Docker's `nat-unprotected` gateway mode.
-
-Otherwise, merge these files into the platform's existing release configuration:
-
-| File | Platform release / purpose |
+| Component | Version |
 |---|---|
-| `platform/turtles-values.yaml` | Main `rancher-turtles` chart: core CAPI version and config Secret |
-| `platform/providers-values.yaml` | `rancher-turtles-providers` chart: AWS, Docker and both RKE2 providers |
-| `platform/core-config.yaml` | Non-credential Secret enabling core CAPI's `ClusterTopology` feature |
+| Rancher | v2.15.2, on management Kubernetes v1.34–v1.36 |
+| Rancher Turtles | v0.27.2 |
+| CAPI core and Docker provider (CAPD) | v1.13.3 |
+| RKE2 providers (CAPRKE2) | v0.25.2 |
+| AWS provider (CAPA) | v2.11.1 |
+| Workload RKE2 | v1.36.4+rke2r1 |
+| AWS cloud controller manager | v1.36.1 |
+| Docker node image | kindest/node:v1.36.1 |
 
-Use provider chart sources from the **v0.27.2 tag**, or the matching Rancher-packaged chart,
-not an independently newer chart. Source `Chart.yaml` versions can be build placeholders.
-The schema check renders both charts from that tag.
+Provider versions follow [Turtles v0.27.2's provider catalogue][catalog]. CAPI resources use
+the `v1beta2` API. The pins live in [`platform/`](platform/) and the cluster manifests, and
+Renovate proposes updates for manual review.
 
-Create `cattle-capi-system` and apply the core config Secret before the core provider
-reconciles. Configure this through the platform's deployment process:
+Live-tested on 17 October 2026: the Docker and AWS RKE2 examples reached `Available` and were
+imported into Rancher. The EKS example has not been live-tested.
 
-```bash
-kubectl create namespace cattle-capi-system --dry-run=client -o yaml | kubectl apply -f -
-kubectl apply -f platform/core-config.yaml
-```
+## Quick start
 
-Do not install a second main Turtles release. For an existing Fleet-owned installation,
-complete the [ownership migration](docs/migration.md) before enabling chart-owned providers.
-The supplied values preserve the previous RKE2 and Docker namespace,
-`cattle-turtles-system`, to avoid an unnecessary controller relocation.
+1. **Deploy the management cluster** with rancher-platform and the providers enabled. Add
+   `capa_aws_access_key_id` and `capa_aws_secret_access_key` to its `secrets.yml` to get the
+   AWS provider; without them only the Docker and RKE2 providers are installed.
 
-MachinePool is enabled by default in core CAPI v1.13; CAPA still needs
-`EXP_MACHINE_POOL: "true"`, supplied in its chart values. ClusterResourceSet no longer needs
-the old `EXP_CLUSTER_RESOURCE_SET` flag. Topology must be enabled on **core CAPI**.
-CAAPF is disabled; CCM uses CAPI ClusterResourceSet directly.
+   ```bash
+   ./manage.sh deploy -e capi_providers_enabled=true
+   ```
 
-Docker requires a reachable Docker daemon configured for CAPD. It is a development
-provider, not a production infrastructure option.
+2. **Fork this repository and configure the examples.** Replace every `REPLACE_WITH_*` value
+   (see [AWS](#aws)) or delete the examples you do not need. Commit and push: Fleet reads the
+   remote branch, not local files.
 
-### 2. Configure AWS credentials and examples
+3. **Validate** the manifests and the management cluster. Both checks are read-only.
 
-Bootstrap IAM profiles once per AWS account with a `clusterawsadm` version matching CAPA:
+   ```bash
+   python3 scripts/validate-repo.py --schemas --deployment-check
+   python3 scripts/check-platform.py --context <management-context>
+   ```
+
+   The first fails while placeholders remain. The second checks provider versions and
+   ownership, controller availability, feature flags, CRDs, Rancher's `server-url`, and that
+   no example cluster name already exists. It does not test AWS permissions or networking.
+
+4. **Register the GitRepo.** Point `spec.repo` and `spec.branch` in
+   [`gitrepo.yaml`](gitrepo.yaml) at your fork, then apply it:
+
+   ```bash
+   kubectl --context <management-context> apply -f gitrepo.yaml
+   kubectl --context <management-context> get bundles -n fleet-local
+   kubectl --context <management-context> get clusters -A
+   ```
+
+   rancher-platform can do this step with `-e fleet_gitrepo_enabled=true` and
+   `fleet_gitrepo_manifest_url` set to your fork's raw `gitrepo.yaml`.
+
+Fleet applies the identity, the ClusterClasses and then the clusters, in dependency order.
+The dependency names include the GitRepo name, `capi-cluster-templates`; rename both together.
+`keepResources: true` keeps CAPI clusters when the GitRepo is deleted or its paths change.
+
+An installation that already runs these clusters or older provider versions needs the staged
+upgrade in [docs/migration.md](docs/migration.md), not a fresh install.
+
+## AWS
+
+Create CAPA's IAM roles once per account, with a `clusterawsadm` release matching CAPA:
 
 ```bash
 clusterawsadm bootstrap iam create-cloudformation-stack
 ```
 
-Store credentials outside Git. Before the AWS provider starts, supply:
+CAPA reads two Secrets in `capa-system`. rancher-platform creates both from `secrets.yml`.
 
-- `capa-credentials` in `capa-system`, with an `AWS_B64ENCODED_CREDENTIALS` key containing
-  a base64-encoded AWS shared-credentials INI document.
-- `cluster-identity` in `capa-system`, with `AccessKeyID` and `SecretAccessKey` keys for
-  the shared `AWSClusterStaticIdentity`.
+| Secret | Keys | Used by |
+|---|---|---|
+| `capa-credentials` | `AWS_B64ENCODED_CREDENTIALS`: a base64 AWS shared-credentials file | CAPA controller |
+| `cluster-identity` | `AccessKeyID`, `SecretAccessKey` | `AWSClusterStaticIdentity` `cluster-identity`, usable from the `default` namespace |
 
-For example, using files from a secret store:
+**Network.** The RKE2 class puts the Kubernetes API behind an internal NLB, so the
+management cluster needs a route into the workload VPC. The simplest layout reuses the
+management host's VPC: set `vpcID`, a public `subnetID`, `publicIP: true`, and the VPC CIDR in
+both `nodeCIDRs` and `apiServerAllowedCIDRs`. Otherwise connect the VPCs by peering or VPN.
+A CAPA-created VPC uses `10.0.0.0/16`, which must not overlap the management, pod or service
+networks. Nodes need outbound internet access to download RKE2 and images.
 
-```bash
-kubectl create namespace capa-system --dry-run=client -o yaml | kubectl apply -f -
-kubectl create secret generic capa-credentials -n capa-system \
-  --from-file=AWS_B64ENCODED_CREDENTIALS=/secure/aws-credentials.b64
-kubectl create secret generic cluster-identity -n capa-system \
-  --from-file=AccessKeyID=/secure/aws-access-key-id \
-  --from-file=SecretAccessKey=/secure/aws-secret-access-key
-```
+**EKS** needs a VPC and at least two subnets in different availability zones, and a
+Kubernetes version that EKS currently offers in the region.
 
-Use the platform's secret-management process to update existing Secrets. The static identity
-is cluster-scoped and permits use only from `default`; its credential Secret belongs in
-the CAPA controller namespace, not the workload cluster namespace.
+## Cluster classes
 
-Replace every `REPLACE_WITH_*` in both AWS examples. Set AMI, key pair, trusted client
-CIDRs, EKS Kubernetes version, VPC and subnet IDs as applicable. EKS needs at least two
-subnets in different availability zones; check current regional EKS version availability.
+Published templates are immutable; a change needs a new class name. The `-v136` classes are
+for new clusters. The original `aws-rke2` and `docker-rke2` classes stay for clusters that
+already use them.
 
-The new AWS RKE2 class uses an **internal NLB**. Management controllers, Rancher and API
-clients need routed access to its VPC through peering, VPN or equivalent. The CAPA-created
-VPC uses `10.0.0.0/16`; avoid overlaps with your management, pod and service networks.
-For an existing VPC, set `vpcID`, `subnetID` and `nodeCIDRs` together. `nodeCIDRs` must
-cover the private node addresses. Nodes still need outbound access to download RKE2 and images.
-The simplest layout puts the cluster in the management host's VPC: set `vpcID`, a public
-`subnetID`, `publicIP: true`, and the VPC CIDR in both `nodeCIDRs` and `apiServerAllowedCIDRs`.
-This layout was live-tested on 17 October 2026 with Rancher 2.15.2, CAPA v2.11.1 and RKE2
-v1.36.4: the cluster reached `Available`, the AWS CCM initialised all nodes and Rancher
-imported it.
-
-### 3. Validate and register Fleet
-
-Install validation dependencies as described below. Both checks are read-only:
-
-```bash
-python3 scripts/validate-repo.py --schemas --deployment-check
-python3 scripts/check-platform.py --context <management-context>
-```
-
-The first check deliberately fails on the repository's unconfigured AWS placeholders.
-The platform check verifies versions, single provider ownership, controller availability,
-features, served CRDs and existing example cluster names. It refuses to treat an existing
-cluster as a fresh installation. It does not test AWS IAM permissions or network reachability.
-
-Commit the configured manifests to your fork and point `gitrepo.yaml` at that fork and
-the reviewed branch before applying it. Fleet reads the remote commit, not your local files.
-
-```bash
-kubectl --context <management-context> apply -f gitrepo.yaml
-kubectl --context <management-context> get gitrepo capi-cluster-templates -n fleet-local
-kubectl --context <management-context> get bundles -n fleet-local
-```
-
-`keepResources: true` retains CAPI resources when the GitRepo is removed or paths change;
-it does not transfer provider ownership or protect against explicit Kubernetes deletion.
-Fleet dependencies order the repo-owned identity, ClusterClass and cluster bundles.
-Platform readiness must be established before registering the GitRepo.
-
-Rancher imports a cluster only once its `server-url` setting is set. Rancher fills it at
-the first UI login; rancher-platform sets it during deploy. Otherwise set it before
-creating clusters, because registration tokens created while it is empty stay without a
-manifest URL.
-
-## Cluster configuration
-
-Fresh RKE2 examples reference `aws-rke2-v136` and `docker-rke2-v136`.
-The original `aws-rke2` and `docker-rke2` classes remain available for existing clusters.
-Treat published templates as immutable: create a new name for future template changes.
-
-### AWS RKE2 variables
+AWS RKE2 (`aws-rke2-v136`) variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| region | eu-west-1 | AWS region |
-| sshKeyName | empty | Optional EC2 key pair |
-| controlPlaneMachineType / workerMachineType | t3.large | Instance types |
-| amiID | required | Supported base OS AMI; CAPRKE2 installs RKE2 |
-| cni | calico | CNI plugin |
-| awsClusterIdentityName | cluster-identity | Shared AWS identity |
-| vpcID / subnetID | empty | Existing network; supply both or neither |
-| publicIP | false | Public node addresses, if the selected subnet supports them |
-| apiServerAllowedCIDRs | required | Trusted management/client CIDRs |
-| nodeCIDRs | required | Private node CIDRs; example uses 10.0.0.0/16 |
+| `region` | `eu-west-1` | AWS region |
+| `amiID` | required | Base OS AMI; CAPRKE2 installs RKE2 at boot |
+| `sshKeyName` | empty | EC2 key pair |
+| `controlPlaneMachineType`, `workerMachineType` | `t3.large` | Instance types |
+| `cni` | `calico` | RKE2 CNI |
+| `awsClusterIdentityName` | `cluster-identity` | AWS identity |
+| `vpcID`, `subnetID` | empty | Existing network; set both or neither |
+| `publicIP` | `false` | Public node addresses |
+| `apiServerAllowedCIDRs` | required | Clients allowed to reach the API load balancer |
+| `nodeCIDRs` | required | Private node addresses |
 
-CAPRKE2 installs the topology's RKE2 version. New templates use IMDSv2 for hostnames,
-do not scan subnets and do not modify `/etc/hosts`. They disable RKE2's cloud controller
-and retain AWS Secrets Manager bootstrap handling.
+Nodes take their hostnames from IMDSv2 and run the AWS cloud controller manager, which a
+ClusterResourceSet installs on clusters labelled `ccm: aws-v136` and `ccm-version: "1.36"`. The
+legacy `ccm: aws` label selects the old apply-once payload.
 
-`ccm: aws-v136` and `ccm-version: "1.36"` select the reconciled v1.36 CCM payload.
-Legacy `ccm: aws` selects the old ApplyOnce payload. Do not select a newer CCM before
-planning the corresponding Kubernetes upgrade.
+Docker RKE2 (`docker-rke2-v136`) takes one variable, `dockerImage`, the `kindest/node` image.
+CAPD needs a Docker network called `kind` that pods can reach; rancher-platform creates it.
 
-### Docker and EKS
+The EKS example uses `AWSManagedControlPlane` and `AWSManagedMachinePool` directly. Its
+Kubernetes version is independent of the RKE2 examples.
 
-Docker exposes `dockerImage`, required for the `kindest/node` image.
-The image version and installed RKE2 patch need not match. Pod and service CIDRs remain
-non-overlapping; anonymous API authentication is not enabled.
+## Providers without rancher-platform
 
-EKS retains `AWSManagedControlPlane` and `AWSManagedMachinePool`. The official Turtles EKS
-ClusterClass uses self-managed workers and is not a drop-in replacement. This repo does
-not force EKS onto the RKE2 Kubernetes version.
+Merge these files into the management cluster's existing Turtles releases. Do not install a
+second `rancher-turtles` release.
 
-## Validation and updates
+| File | Purpose |
+|---|---|
+| [`platform/turtles-values.yaml`](platform/turtles-values.yaml) | `rancher-turtles` chart: core CAPI version and config Secret |
+| [`platform/providers-values.yaml`](platform/providers-values.yaml) | `rancher-turtles-providers` chart: CAPA, CAPD and both CAPRKE2 providers |
+| [`platform/core-config.yaml`](platform/core-config.yaml) | Secret enabling core CAPI's `ClusterTopology` feature |
 
-Use Python 3.12 or newer, [Mike Farah yq][yq] v4.44.3 or newer and Helm v3.18.6:
+Use the charts from the Turtles v0.27.2 tag or the matching Rancher-packaged chart. Apply
+`core-config.yaml` in `cattle-capi-system` before the core provider reconciles. CAPA needs
+its Secrets before it starts. The values keep RKE2 and CAPD in `cattle-turtles-system` to
+match migrated installs; rancher-platform uses the chart's own namespaces instead because
+Helm cannot adopt an existing namespace. `check-platform.py` accepts both.
+
+## Repository layout
+
+```text
+clusterclasses/   ClusterClasses and the AWS CCM ClusterResourceSets (Fleet bundles)
+identities/       AWS cluster identity (Fleet bundle)
+clusters/         example clusters (Fleet bundles)
+platform/         provider chart values; applied by the platform, never by Fleet
+scripts/          validate-repo.py, check-platform.py and schema helpers
+tests/            unit tests for the scripts
+docs/             migration guide
+gitrepo.yaml      Fleet GitRepo for the three bundle directories
+```
+
+## Development
+
+Requirements: Python 3.12 or newer, [yq][yq] v4.44.3 or newer and Helm v3.18.6.
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-python3 -m pip install -r requirements-validation.txt
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements-validation.txt
 python3 scripts/validate-repo.py --schemas
 python3 -m unittest discover -s tests
 ```
 
-`scripts/validate-repo.py` checks YAML, source boundaries, Fleet dependencies, template
-references, patch paths, CIDRs and provider/version conventions. `--schemas` uses
-`scripts/schema_validation.py` to download pinned CAPI/provider CRDs, Kubernetes v1.36.4
-schemas and Turtles chart schemas, then render both platform charts offline with Helm.
-Example placeholders retain their string type but skip string pattern/enum constraints;
-`--deployment-check` rejects them entirely. Network access is required for schema downloads.
-CEL rules, admission/defaulting and full CAPI topology generation require a live integration
-test; these static checks do not prove successful bootstrap.
+`validate-repo.py` checks YAML, Fleet dependencies, template references, patch paths, CIDRs
+and version conventions. `--schemas` downloads the pinned CRDs, Kubernetes schemas and Turtles
+charts, then validates every resource and renders both platform charts offline. Static checks
+do not cover CEL rules, admission defaults or a real bootstrap.
 
-GitHub Actions runs schema/chart validation and the regression suite. The read-only
-`scripts/check-platform.py` requires an explicit kubecontext and is never run by CI.
-No live deployment or Docker lifecycle test has been performed for this baseline.
+GitHub Actions runs two workflows:
 
-`renovate.json` groups stack updates for manual compatibility review, rejects prereleases,
-pins GitHub Actions and excludes legacy templates. Workload minor upgrades are disabled:
-they require new classes and a CCM migration. Renovate also tracks Python validation
-dependencies and yq. Enable the Renovate GitHub App for this repository; configuration
-alone does not schedule updates. Grouping upstream releases does not certify their compatibility.
+- **Validate** runs the schema validation and unit tests on every push and pull request.
+- **Platform check** builds a disposable management cluster on the runner with
+  rancher-platform, installs this branch's `providers-values.yaml` and runs
+  `check-platform.py`. It runs on changes to `platform/` or the check, weekly, and on demand.
+  CAPA gets dummy credentials, so it creates no AWS resources.
 
-## Further improvements
-
-| Priority | Proposal | Prerequisite |
-|---|---|---|
-| P1 | Short-lived AWS credentials and least-privilege IAM boundaries | Platform workload identity / secret-store design |
-| P1 | Opt-in Docker lifecycle CI: create, wait for Ready nodes, delete | Dedicated runner and management-cluster isolation |
-| P1 | Automated backup/restore drill for Rancher, CAPI and credentials | Supported backup tooling and recovery environment |
-| P2 | CSI/storage and workload health examples | Explicit ownership, compatible versions and cost controls |
-| P2 | Separate EKS ClusterClass offering with self-managed workers | An explicit need for self-managed nodes |
-
-AWS examples remain enabled by user choice. Opt-in deployment profiles would further
-reduce accidental provisioning, but are not part of this configuration.
+Renovate groups provider-stack and RKE2 updates and waits for approval on the dependency
+dashboard. RKE2 minor upgrades are disabled because they need new classes and a CCM migration.
 
 [catalog]: https://github.com/rancher/turtles/blob/v0.27.2/internal/controllers/clusterctl/config-prime.yaml
-[rancher-release]: https://github.com/rancher/rancher/releases/tag/v2.15.2
 [yq]: https://github.com/mikefarah/yq
