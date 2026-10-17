@@ -87,7 +87,15 @@ jobs:
         working-directory: fleet
         env:
           KUBECONFIG: /home/runner/.kube/rancher-platform.yaml
-        run: python3 scripts/check-platform.py --context "$(kubectl config current-context)"
+        # Turtles may still be reconciling a provider just after the deploy; retry for 5 minutes.
+        run: |
+          context=$(kubectl config current-context)
+          for attempt in $(seq 10); do
+            python3 scripts/check-platform.py --context "${context}" && exit 0
+            echo "Attempt ${attempt} failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
 
       - name: Show cluster state
         if: failure()
