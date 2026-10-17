@@ -92,6 +92,9 @@ def main():
     minor = int(re.match(r"\d+", server["minor"])[0])
     if server["major"] != "1" or minor not in (34, 35, 36):
         errors.append("management Kubernetes must be >=1.34 and <1.37")
+    # Registration tokens created while this is empty never get a manifest URL, so imports stall.
+    if not kubectl("get", "settings.management.cattle.io", "server-url").get("value"):
+        errors.append("Rancher server-url is empty: set it (first UI login) before creating clusters")
     deployments = kubectl("get", "deployments", "-A")["items"]
     for name in ("capi-controller-manager", "capa-controller-manager", "capd-controller-manager",
                  "rke2-bootstrap-controller-manager", "rke2-control-plane-controller-manager",

@@ -148,6 +148,11 @@ clients need routed access to its VPC through peering, VPN or equivalent. The CA
 VPC uses `10.0.0.0/16`; avoid overlaps with your management, pod and service networks.
 For an existing VPC, set `vpcID`, `subnetID` and `nodeCIDRs` together. `nodeCIDRs` must
 cover the private node addresses. Nodes still need outbound access to download RKE2 and images.
+The simplest layout puts the cluster in the management host's VPC: set `vpcID`, a public
+`subnetID`, `publicIP: true`, and the VPC CIDR in both `nodeCIDRs` and `apiServerAllowedCIDRs`.
+This layout was live-tested on 17 October 2026 with Rancher 2.15.2, CAPA v2.11.1 and RKE2
+v1.36.4: the cluster reached `Available`, the AWS CCM initialised all nodes and Rancher
+imported it.
 
 ### 3. Validate and register Fleet
 
@@ -176,6 +181,11 @@ kubectl --context <management-context> get bundles -n fleet-local
 it does not transfer provider ownership or protect against explicit Kubernetes deletion.
 Fleet dependencies order the repo-owned identity, ClusterClass and cluster bundles.
 Platform readiness must be established before registering the GitRepo.
+
+Rancher imports a cluster only once its `server-url` setting is set. Rancher fills it at
+the first UI login; rancher-platform sets it during deploy. Otherwise set it before
+creating clusters, because registration tokens created while it is empty stay without a
+manifest URL.
 
 ## Cluster configuration
 
