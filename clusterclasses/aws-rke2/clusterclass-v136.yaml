@@ -365,6 +365,12 @@ spec:
             fromPort: 6443
             protocol: tcp
             toPort: 6443
+          - description: Kubernetes API from nodes
+            fromPort: 6443
+            cidrBlocks:
+              - 127.0.0.1/32   # replaced by apiServerIngress
+            protocol: tcp
+            toPort: 6443
         loadBalancerType: nlb
       network:
         cni:
