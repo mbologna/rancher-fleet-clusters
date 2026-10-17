@@ -232,6 +232,29 @@ spec:
                     fromPort: 6443
                     toPort: 6443
                     cidrBlocks: {{ toJson (uniq (concat .apiServerAllowedCIDRs .nodeCIDRs)) }}
+    # CAPA already opens etcd 2379/2380 between control-plane nodes; the template's
+    # extra etcd rules duplicate them and EC2 rejects the whole request. The template
+    # is immutable, so replace the list here.
+    - name: controlPlaneIngress
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/network/additionalControlPlaneIngressRules
+              value:
+                - description: RKE2 Control Plane additional group
+                  protocol: tcp
+                  fromPort: 9345
+                  toPort: 9345
+                  sourceSecurityGroupRoles:
+                    - node
+                    - controlplane
+                    - apiserver-lb
+                    - lb
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
