@@ -288,6 +288,12 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+            # Base OS AMIs lack the AWS CLI that the Secrets Manager userdata fetch needs.
+            # Set here because the machine templates are immutable.
+            - op: add
+              path: /spec/template/spec/cloudInit
+              value:
+                insecureSkipSecretsManager: true
     - name: controlPlaneSubnet
       enabledIf: '{{ ne .subnetID "" }}'
       definitions:
@@ -323,6 +329,12 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+            # Base OS AMIs lack the AWS CLI that the Secrets Manager userdata fetch needs.
+            # Set here because the machine templates are immutable.
+            - op: add
+              path: /spec/template/spec/cloudInit
+              value:
+                insecureSkipSecretsManager: true
     - name: workerSubnet
       enabledIf: '{{ ne .subnetID "" }}'
       definitions:
