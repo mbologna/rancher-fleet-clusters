@@ -226,16 +226,12 @@ spec:
                     fromPort: 9345
                     toPort: 9345
                     cidrBlocks: {{ toJson .nodeCIDRs }}
+                  # One rule: EC2 rejects duplicate permissions when the two lists overlap.
                   - description: Kubernetes API
                     protocol: tcp
                     fromPort: 6443
                     toPort: 6443
-                    cidrBlocks: {{ toJson .apiServerAllowedCIDRs }}
-                  - description: Kubernetes API from nodes
-                    protocol: tcp
-                    fromPort: 6443
-                    toPort: 6443
-                    cidrBlocks: {{ toJson .nodeCIDRs }}
+                    cidrBlocks: {{ toJson (uniq (concat .apiServerAllowedCIDRs .nodeCIDRs)) }}
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
@@ -367,12 +363,6 @@ spec:
               - 127.0.0.1/32   # replaced by apiServerIngress
             description: Kubernetes API
             fromPort: 6443
-            protocol: tcp
-            toPort: 6443
-          - description: Kubernetes API from nodes
-            fromPort: 6443
-            cidrBlocks:
-              - 127.0.0.1/32   # replaced by apiServerIngress
             protocol: tcp
             toPort: 6443
         loadBalancerType: nlb
