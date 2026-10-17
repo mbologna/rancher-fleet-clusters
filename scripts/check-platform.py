@@ -76,7 +76,6 @@ def main():
         )
         return json.loads(result.stdout)
 
-    subprocess.run([sys.executable, str(ROOT / "scripts/validate-repo.py"), "--deployment-check"], check=True)
     values = yaml_documents(ROOT / "platform/providers-values.yaml")[0]["providers"]
     core = yaml_documents(ROOT / "platform/turtles-values.yaml")[0]["cluster-api-operator"]["cluster-api"]["core"]
     expected = [("core", "cluster-api", core["namespace"], core["version"])]

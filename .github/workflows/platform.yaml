@@ -1,0 +1,107 @@
+name: Platform check
+
+# Builds a disposable management cluster on the runner with rancher-platform (RKE2, Rancher,
+# Turtles), installs this branch's providers-values.yaml, then runs scripts/check-platform.py.
+# CAPA gets dummy keys so its controller starts; nothing calls AWS.
+
+on:
+  pull_request:
+    paths:
+      - platform/**
+      - scripts/check-platform.py
+      - .github/workflows/platform.yaml
+  schedule:
+    # Weekly, to catch drift between this repo's pins and rancher-platform's main branch.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+    inputs:
+      rancher-platform-ref:
+        description: rancher-platform branch, tag or commit to deploy
+        default: main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          path: fleet
+          persist-credentials: false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: mbologna/rancher-platform
+          ref: ${{ inputs.rancher-platform-ref || 'main' }}
+          path: rancher-platform
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Ansible
+        working-directory: rancher-platform/ansible
+        run: |
+          pip install -r requirements-ci.txt
+          ./manage.sh install
+
+      # The runner is the target host. Docker is preinstalled, so only CAPD's network is set up.
+      - name: Write the inventory and secrets
+        working-directory: rancher-platform/ansible
+        run: |
+          ip=$(hostname -I | awk '{print $1}')
+          cat > inventory/hosts.yml <<INVENTORY
+          servers:
+            hosts:
+              runner:
+                ansible_connection: local
+                ansible_host: ${ip}
+                ansible_user: ${USER}
+                rancher_hostname: rancher.${ip}.sslip.io
+                install_docker: false
+                capd_enabled: true
+                capi_providers_enabled: true
+                capi_providers_values_url: file://${GITHUB_WORKSPACE}/fleet/platform/providers-values.yaml
+          INVENTORY
+          password=$(openssl rand -hex 16)
+          echo "::add-mask::${password}"
+          cat > group_vars/all/secrets.yml <<SECRETS
+          rancher_bootstrap_password: "${password}"
+          capa_aws_access_key_id: ci-dummy-key-id
+          capa_aws_secret_access_key: ci-dummy-secret
+          SECRETS
+
+      - name: Deploy the management cluster
+        working-directory: rancher-platform/ansible
+        run: ./manage.sh deploy
+
+      - name: Check the platform
+        working-directory: fleet
+        env:
+          KUBECONFIG: /home/runner/.kube/rancher-platform.yaml
+        # Turtles may still be reconciling a provider just after the deploy; retry for 5 minutes.
+        run: |
+          context=$(kubectl config current-context)
+          for attempt in $(seq 10); do
+            python3 scripts/check-platform.py --context "${context}" && exit 0
+            echo "Attempt ${attempt} failed; retrying in 30s"
+            sleep 30
+          done
+          exit 1
+
+      - name: Show cluster state
+        if: failure()
+        env:
+          KUBECONFIG: /home/runner/.kube/rancher-platform.yaml
+        run: |
+          kubectl get capiproviders -A || true
+          kubectl get pods -A || true
+          df -h /
