@@ -14,6 +14,10 @@ on:
     # Weekly, to catch drift between this repo's pins and rancher-platform's main branch.
     - cron: "17 5 * * 1"
   workflow_dispatch:
+    inputs:
+      rancher-platform-ref:
+        description: rancher-platform branch, tag or commit to deploy
+        default: main
 
 permissions:
   contents: read
@@ -35,6 +39,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: mbologna/rancher-platform
+          ref: ${{ inputs.rancher-platform-ref || 'main' }}
           path: rancher-platform
           persist-credentials: false
 
@@ -48,7 +53,7 @@ jobs:
           pip install -r requirements-ci.txt
           ./manage.sh install
 
-      # The runner is the target host. Docker is preinstalled; CAPD uses it.
+      # The runner is the target host. Docker is preinstalled, so only CAPD's network is set up.
       - name: Write the inventory and secrets
         working-directory: rancher-platform/ansible
         run: |
@@ -62,6 +67,7 @@ jobs:
                 ansible_user: ${USER}
                 rancher_hostname: rancher.${ip}.sslip.io
                 install_docker: false
+                capd_enabled: true
                 capi_providers_enabled: true
                 capi_providers_values_url: file://${GITHUB_WORKSPACE}/fleet/platform/providers-values.yaml
           INVENTORY
