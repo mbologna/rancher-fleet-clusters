@@ -231,6 +231,13 @@ for path, resource in resources:
                 if not templates:
                     fail(f"{path.relative_to(ROOT)}: patch {patch['name']} matches no templates")
                 for operation in definition.get("jsonPatches", []):
+                    indices = [int(part) for part in operation["path"].split("/") if part.isdigit()]
+                    # Mirrors CAPI's validateIndexAccess webhook rule.
+                    if indices and (operation["op"] in ("replace", "remove") or any(indices)):
+                        fail(
+                            f"{path.relative_to(ROOT)}: patch path {operation['path']} uses an "
+                            f"array index CAPI rejects for {operation['op']}"
+                        )
                     variable = operation.get("valueFrom", {}).get("variable")
                     if variable and variable.split(".")[0] not in variable_names | {"builtin"}:
                         fail(f"{path.relative_to(ROOT)}: patch references unknown variable {variable}")

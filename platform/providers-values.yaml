@@ -23,6 +23,9 @@ providers:
       name: capa-credentials
       namespace: capa-system
     variables:
+      # null drops the chart's empty default, which Turtles would copy into
+      # capa-credentials and blank the stored credentials.
+      AWS_B64ENCODED_CREDENTIALS: null
       AWS_REGION: eu-west-1
       EXP_MACHINE_POOL: "true"
   infrastructureDocker:

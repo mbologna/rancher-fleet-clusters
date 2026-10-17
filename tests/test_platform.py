@@ -39,6 +39,18 @@ class PlatformTests(unittest.TestCase):
     def test_ready_provider_passes(self):
         self.assertEqual(platform.provider_errors([self.provider], self.expected), [])
 
+    def test_chart_default_namespace_passes(self):
+        self.provider["metadata"]["namespace"] = "capd-system"
+        self.provider["spec"]["name"] = "docker"
+        expected = [("infrastructure", "docker", "cattle-turtles-system", "v2.11.1")]
+        self.assertEqual(platform.provider_errors([self.provider], expected), [])
+
+    def test_hook_owned_core_passes(self):
+        self.provider["metadata"].update(namespace="cattle-capi-system", annotations={"helm.sh/hook": "post-install"})
+        self.provider["spec"].update(name="cluster-api", type="core")
+        expected = [("core", "cluster-api", "cattle-capi-system", "v2.11.1")]
+        self.assertEqual(platform.provider_errors([self.provider], expected), [])
+
     def test_duplicate_owners_fail(self):
         duplicate = copy.deepcopy(self.provider)
         duplicate["metadata"]["namespace"] = "another-namespace"
@@ -51,6 +63,10 @@ class PlatformTests(unittest.TestCase):
     def test_stale_status_fails(self):
         self.provider["status"]["conditions"][0]["observedGeneration"] = 1
         self.assertIn("stale", platform.provider_errors([self.provider], self.expected)[0])
+
+    def test_one_lagging_condition_passes(self):
+        self.provider["status"]["conditions"].append({"type": "Ready", "status": "True", "observedGeneration": 1})
+        self.assertEqual(platform.provider_errors([self.provider], self.expected), [])
 
     def test_wrong_version_fails(self):
         self.provider["status"]["installedVersion"] = "v2.10.2"

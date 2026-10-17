@@ -41,6 +41,14 @@ class ValidateRepositoryTests(unittest.TestCase):
     def test_repository_is_valid(self):
         self.validate()
 
+    def test_indexed_replace_patch_is_reported(self):
+        self.replace(
+            "clusterclasses/aws-rke2/clusterclass.yaml",
+            "path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules\n",
+            "path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/1\n",
+        )
+        self.validate("uses an array index CAPI rejects for replace")
+
     def test_eks_rejects_old_reference_fields(self):
         self.replace(
             "clusters/aws-eks-example/cluster.yaml",

@@ -208,11 +208,31 @@ spec:
             matchResources:
               infrastructureCluster: true
           jsonPatches:
-            # Rule index 1 is the Kubernetes API (port 6443) ingress rule below.
+            # CAPI rejects array indices in replace paths, so render the whole list.
             - op: replace
-              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/1/cidrBlocks
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules
               valueFrom:
-                variable: apiServerAllowedCIDRs
+                template: |
+                  - description: RKE2 Control Plane
+                    protocol: tcp
+                    fromPort: 9345
+                    toPort: 9345
+                    cidrBlocks: ["10.0.0.0/8"]
+                  - description: Kubernetes API
+                    protocol: tcp
+                    fromPort: 6443
+                    toPort: 6443
+                    cidrBlocks: {{ toJson .apiServerAllowedCIDRs }}
+                  - description: Etcd
+                    protocol: tcp
+                    fromPort: 2379
+                    toPort: 2379
+                    cidrBlocks: ["10.0.0.0/8"]
+                  - description: Etcd peer
+                    protocol: tcp
+                    fromPort: 2380
+                    toPort: 2380
+                    cidrBlocks: ["10.0.0.0/8"]
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
