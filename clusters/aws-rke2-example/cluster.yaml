@@ -1,6 +1,6 @@
 # Example: AWS RKE2 cluster via CAPA + CAPRKE2
 # Uses the aws-rke2 ClusterClass defined in clusterclasses/aws-rke2/
-# CAPI contract: v1beta1 (Cluster); v1beta2 for CAPA infrastructure types
+# CAPI contract: v1beta2
 #
 # Before applying, fill in the variables below:
 #   1. amiID     - AMI ID of a base OS image (Ubuntu 22.04, RHEL 9, etc.)
@@ -12,22 +12,10 @@
 #                      --query 'sort_by(Images,&CreationDate)[-1].ImageId' \
 #                      --output text --region eu-west-1
 #   2. sshKeyName - an existing EC2 key pair in your account (for debug SSH access)
-#   3. Ensure AWS credentials Secret "cluster-identity" exists in namespace "default"
-#      (created automatically by Ansible — do not add it here)
+#   3. Set apiServerAllowedCIDRs to the trusted client CIDRs for the Kubernetes API.
 #   4. Ensure IAM profiles exist: clusterawsadm bootstrap iam create-cloudformation-stack
-#
-# AWSClusterStaticIdentity references the "cluster-identity" Secret created by Ansible.
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-kind: AWSClusterStaticIdentity
-metadata:
-  name: cluster-identity
-  namespace: default
-spec:
-  secretRef: cluster-identity
-  allowedNamespaces: {}
----
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: aws-rke2-example
@@ -45,7 +33,8 @@ spec:
       cidrBlocks:
         - 10.96.0.0/12
   topology:
-    class: aws-rke2
+    classRef:
+      name: aws-rke2
     version: v1.33.10+rke2r3
     controlPlane:
       replicas: 1   # increase to 3 for HA
@@ -58,20 +47,17 @@ spec:
       - name: region
         value: "eu-west-1"
       - name: sshKeyName
-        value: "rancher-platform-key"
+        value: "REPLACE_WITH_KEY_PAIR_NAME"
       - name: controlPlaneMachineType
         value: "t3.large"
       - name: workerMachineType
         value: "t3.large"
       - name: amiID
-        value: "ami-02b2b2920b4582828"   # Ubuntu 22.04 LTS eu-west-1 (CAPRKE2 installs RKE2 via cloud-init)
+        value: "REPLACE_WITH_AMI_ID"
       - name: cni
         value: "calico"
       - name: awsClusterIdentityName
         value: "cluster-identity"
-      - name: vpcID
-        value: "vpc-09bb44089366662c7"   # Existing Terraform VPC (VPC limit workaround)
-      - name: subnetID
-        value: "subnet-078a35793cd8a5c8c"  # 10.12.3.0/24 Public subnet eu-west-1a in Terraform VPC
-      - name: publicIP
-        value: true   # Required for public subnet (no NAT gateway)
+      - name: apiServerAllowedCIDRs
+        value:
+          - "REPLACE_WITH_TRUSTED_CLIENT_CIDR"

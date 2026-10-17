@@ -1,4 +1,0 @@
-defaultNamespace: default
-
-dependsOn:
-  - name: capi-cluster-templates-clusterclasses-metal3-rke2

@@ -1,0 +1,4 @@
+defaultNamespace: default
+
+dependsOn:
+  - name: capi-cluster-templates-providers-capa

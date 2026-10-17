@@ -1,5 +1,0 @@
-defaultNamespace: default
-
-dependsOn:
-  - name: capi-cluster-templates-providers-rke2
-  - name: capi-cluster-templates-providers-capm3

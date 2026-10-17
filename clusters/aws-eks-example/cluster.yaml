@@ -9,9 +9,10 @@
 #   2. Set version to an EKS-supported Kubernetes version:
 #        aws eks describe-addon-versions --query 'addons[0].addonVersions[].compatibilities[].clusterVersion' \
 #          --output text | tr '\t' '\n' | sort -u
-#   3. Ensure the AWS credentials Secret "cluster-identity" exists in namespace "default"
-#      (created automatically by Ansible — do not add it here)
-#   4. Ensure IAM profiles exist: clusterawsadm bootstrap iam create-cloudformation-stack
+#   3. Set VPC and subnet IDs to your AWS network; EKS requires subnets in different AZs.
+#   4. Create the AWS credentials Secret "cluster-identity" in namespace "capa-system".
+#      Fleet installs the matching AWSClusterStaticIdentity after CAPA is ready.
+#   5. Ensure IAM profiles exist: clusterawsadm bootstrap iam create-cloudformation-stack
 #
 # Cost note: EKS charges ~$0.10/hr for the managed control plane, independent of worker nodes.
 ---
@@ -32,24 +33,22 @@ metadata:
   namespace: default
 spec:
   region: "eu-west-1"
-  sshKeyName: "mbologna-rancher-platform-key"
-  version: "v1.31"           # EKS-supported version; check aws eks describe-addon-versions
+  sshKeyName: "REPLACE_WITH_KEY_PAIR_NAME"
+  version: "REPLACE_WITH_SUPPORTED_EKS_VERSION"
   eksClusterName: aws-eks-example
   identityRef:
     kind: AWSClusterStaticIdentity
-    name: cluster-identity   # Secret created by Ansible in namespace "default"
-  # Reuse existing VPC to avoid hitting the AWS VPC limit (default: 5 per region).
-  # The VPC and subnets were created by Terraform for the management cluster.
+    name: cluster-identity
   # EKS requires at least 2 subnets in different AZs.
   network:
     vpc:
-      id: "vpc-09bb44089366662c7"
+      id: "REPLACE_WITH_VPC_ID"
     subnets:
-      - id: "subnet-0dc15c2d52e736c58"   # 10.12.1.0/24 eu-west-1a
-      - id: "subnet-07260b70f0eee6e2c"   # 10.12.2.0/24 eu-west-1b
+      - id: "REPLACE_WITH_SUBNET_ID_A"
+      - id: "REPLACE_WITH_SUBNET_ID_B"
 ---
 # Cluster — top-level CAPI object; wires together infrastructure and control plane.
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: aws-eks-example
@@ -59,11 +58,11 @@ metadata:
     infrastructure: aws
 spec:
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+    apiGroup: controlplane.cluster.x-k8s.io
     kind: AWSManagedControlPlane
     name: aws-eks-example-control-plane
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+    apiGroup: infrastructure.cluster.x-k8s.io
     kind: AWSManagedCluster
     name: aws-eks-example
 ---
@@ -78,15 +77,14 @@ spec:
   scaling:
     minSize: 1
     maxSize: 3
-  # Explicitly specify subnets so CAPA can determine placement for the nodegroup.
   # EKS nodegroups require subnets in the same VPC as the control plane.
   subnetIDs:
-    - "subnet-0dc15c2d52e736c58"   # 10.12.1.0/24 eu-west-1a
-    - "subnet-07260b70f0eee6e2c"   # 10.12.2.0/24 eu-west-1b
+    - "REPLACE_WITH_SUBNET_ID_A"
+    - "REPLACE_WITH_SUBNET_ID_B"
 ---
 # MachinePool — CAPI wrapper that references the AWSManagedMachinePool above.
 # Bootstrap is handled automatically by EKS — no KubeadmConfig or RKE2Config needed.
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachinePool
 metadata:
   name: aws-eks-example-pool-0
@@ -100,6 +98,6 @@ spec:
       bootstrap:
         dataSecretName: ""   # EKS manages node bootstrap via UserData internally
       infrastructureRef:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+        apiGroup: infrastructure.cluster.x-k8s.io
         kind: AWSManagedMachinePool
         name: aws-eks-example-pool-0

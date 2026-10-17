@@ -13,21 +13,18 @@ providers/
   rke2/          CAPRKE2 — bootstrap + control-plane provider for RKE2 clusters
   docker/        CAPD   — Docker-based nodes (local dev + CI)
   capa/          CAPA   — AWS EC2 + EKS infrastructure provider
-  capm3/         CAPM3  — bare-metal via Metal3 + Ironic
 
 clusterclasses/
   docker-rke2/   reusable Docker + RKE2 topology (local dev)
-  aws-rke2/      reusable AWS EC2 + RKE2 topology
-  metal3-rke2/   reusable bare-metal + RKE2 topology
+  aws-rke2/      reusable AWS EC2 + RKE2 topology, including a ClusterResourceSet for AWS CCM
 
 clusters/
   docker-rke2-example/   1 CP + 1 worker in Docker containers
-  aws-rke2-example/      1 CP + 2 workers on AWS EC2 (RKE2 v1.33.x)
-  aws-eks-example/       EKS managed control plane + node group (k8s v1.31)
-  metal3-rke2-example/   1 CP + 2 workers on bare metal via Metal3
+  aws-rke2-example/      1 CP + 2 workers on AWS EC2
+  aws-eks-example/       EKS managed control plane + node group
 
-applications/
-  aws-ccm/       AWS Cloud Controller Manager — deployed to clusters labelled infrastructure=aws
+identities/
+  aws/           shared AWSClusterStaticIdentity for CAPA clusters
 ```
 
 Every cluster carries `cluster-api.cattle.io/rancher-auto-import: "true"`. Turtles imports it
@@ -58,16 +55,18 @@ Requires Docker running on the management node. Ships out of the box with ranche
 clusterawsadm bootstrap iam create-cloudformation-stack
 ```
 
-**Create the credentials secrets** (the namespace and secrets can be created before Fleet runs):
+**Create the AWS cluster credentials Secret** in the CAPA controller namespace
+(`capa-system`). The `AWSClusterStaticIdentity` is cluster-scoped; Fleet creates it after
+CAPA is installed:
 
 ```bash
 kubectl create namespace capa-system --dry-run=client -o yaml | kubectl apply -f -
 
-# Secret referenced by AWSClusterStaticIdentity — needs AccessKeyID + SecretAccessKey
 kubectl create secret generic cluster-identity \
   --namespace capa-system \
-  --from-literal=AccessKeyID=<your-access-key-id> \
-  --from-literal=SecretAccessKey=<your-secret-access-key>
+  --from-literal='AccessKeyID=<your-access-key-id>' \
+  --from-literal='SecretAccessKey=<your-secret-access-key>' \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 After registering Fleet (step 3) and waiting for the CAPA CAPIProvider to appear, **patch**
@@ -85,29 +84,12 @@ kubectl patch secret capa-credentials -n capa-system \
   -p "{\"data\":{\"AWS_B64ENCODED_CREDENTIALS\":\"${B64_CREDS}\"}}"
 ```
 
-> **VPC/subnet IDs**: `clusters/aws-rke2-example/cluster.yaml` and
-> `clusters/aws-eks-example/cluster.yaml` contain hardcoded VPC and subnet IDs. Update
-> them to match your own infrastructure before use.
+> **Before applying AWS examples**: replace the explicit `REPLACE_WITH_*` values in the
+> cluster manifests. The RKE2 example lets CAPA create a VPC by default; its API access
+> CIDR must be restricted to trusted clients. The EKS example requires your VPC and at
+> least two subnets in different availability zones.
 
 > **Cost note:** EKS charges ~$0.10/hr for the managed control plane.
-
-#### Metal3 (`metal3-rke2-example`)
-
-Requires Ironic running and reachable from the management cluster, DHCP + PXE on the bare-metal
-network, and `BareMetalHost` objects registered in the `default` namespace.
-
-**Create the Ironic credentials secret**:
-
-```bash
-kubectl create namespace capm3-system --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl create secret generic ironic-credentials \
-  --namespace capm3-system \
-  --from-literal=IRONIC_URL=http://<ironic-host>:6385/v1/ \
-  --from-literal=IRONIC_INSPECTOR_URL=http://<ironic-host>:5050/v1/ \
-  --from-literal=IRONIC_USERNAME=<username> \
-  --from-literal=IRONIC_PASSWORD=<password>
-```
 
 ### 3. Register this repo in Fleet
 
@@ -117,8 +99,8 @@ A ready-made manifest lives at the root of this repo:
 kubectl apply -f gitrepo.yaml
 ```
 
-Fleet reconciles all paths: installs CAPI providers, deploys ClusterClasses, and provisions
-the example clusters. Check progress:
+Fleet reconciles the provider, ClusterClass, identity, and cluster directories. It does not
+bundle this bootstrap manifest or the repository automation. Check progress:
 
 ```bash
 kubectl get gitrepo capi-cluster-templates -n fleet-local
@@ -128,25 +110,11 @@ kubectl get bundles -n fleet-local
 > **`keepResources: true`** prevents Fleet from deleting CAPI resources if the GitRepo is
 > removed or paths change, avoiding accidental cluster teardown.
 
-### 4. Create the AWS cluster identity *(AWS only)*
-
-`AWSClusterStaticIdentity` is a CRD installed by CAPA; it won't exist until Fleet has deployed
-the provider. Wait for the CAPA provider to be ready, then create the identity:
-
-```bash
-kubectl wait capiprovider aws -n capa-system \
-  --for=condition=ProviderInstalled=True --timeout=300s
-
-kubectl apply -f - <<EOF
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-kind: AWSClusterStaticIdentity
-metadata:
-  name: cluster-identity
-spec:
-  secretRef: cluster-identity
-  allowedNamespaces: {}
-EOF
-```
+For AWS, Fleet applies the shared `AWSClusterStaticIdentity` from `identities/aws/` after the
+CAPA provider bundle. The secret must already exist in `capa-system`. Fleet then deploys each AWS
+cluster example after the identity and its ClusterClass are available.
+The AWS RKE2 example carries `ccm: aws`, so its ClusterResourceSet installs AWS CCM on that
+cluster. The EKS example does not use that ClusterResourceSet.
 
 ---
 
@@ -175,6 +143,9 @@ aws ec2 terminate-instances --region eu-west-1 --instance-ids <orphan-id> ...
 Do this **before** (or immediately after) registering Fleet, before CAPI spawns new machines.
 
 ### 2. Re-register Fleet
+
+Before re-registering, recreate the `cluster-identity` Secret in `capa-system` from your secret
+store if it was lost with the management cluster. Fleet recreates the `AWSClusterStaticIdentity`.
 
 ```bash
 kubectl apply -f gitrepo.yaml
@@ -244,11 +215,16 @@ git add clusters/my-cluster && git commit -m "feat: add my-cluster" && git push
 | Variable                 | Default    | Description                              |
 |--------------------------|------------|------------------------------------------|
 | region                   | eu-west-1  | AWS region                               |
-| sshKeyName               | (required) | EC2 key pair name                        |
-| controlPlaneInstanceType | t3.large   | Instance type for control plane nodes    |
-| workerInstanceType       | t3.large   | Instance type for worker nodes           |
-| vpcID                    | (empty)    | Existing VPC ID; empty = CAPA creates    |
-| amiID                    | (required) | AMI ID for EC2 instances                 |
+| sshKeyName               | empty      | Optional EC2 key pair for SSH access     |
+| controlPlaneMachineType  | t3.large   | Instance type for control plane nodes    |
+| workerMachineType        | t3.large   | Instance type for worker nodes           |
+| amiID                    | required   | AMI ID for EC2 instances                 |
+| cni                      | calico     | CNI plugin                               |
+| awsClusterIdentityName   | cluster-identity | AWS static identity name           |
+| vpcID                    | empty      | Existing VPC; empty = CAPA creates one   |
+| subnetID                 | empty      | Optional subnet used with vpcID          |
+| publicIP                 | false      | Assign public IPs when using a public subnet |
+| apiServerAllowedCIDRs    | required   | Trusted CIDRs for Kubernetes API access |
 
 ### aws-eks
 
@@ -257,32 +233,38 @@ No ClusterClass: control plane managed entirely by AWS.
 | Field        | Default    | Description                                 |
 |--------------|------------|---------------------------------------------|
 | region       | eu-west-1  | AWS region                                  |
-| sshKeyName   | (required) | EC2 key pair for node SSH access            |
-| version      | v1.31      | EKS-supported Kubernetes version            |
+| sshKeyName   | set before use | EC2 key pair for node SSH access        |
+| version      | set before use | EKS-supported Kubernetes version       |
 | instanceType | t3.large   | EC2 instance type for managed node group    |
 | replicas     | 2          | Node count (scales between minSize–maxSize) |
-
-### metal3-rke2
-
-| Variable               | Required | Description                       |
-|------------------------|----------|-----------------------------------|
-| imageURL               | yes      | HTTP URL of OS raw image          |
-| imageChecksum          | yes      | SHA256 checksum of the image      |
-| controlPlaneEndpointIP | yes      | VIP for the Kubernetes API server |
 
 ---
 
 ## Version matrix
 
-| Component       | Version |
-|-----------------|---------|
-| CAPI core       | v1.12.5 |
-| CAPA (AWS)      | v2.10.2 |
-| CAPRKE2         | v0.24.2 |
-| CAPD (Docker)   | v1.12.5 |
-| CAPM3 (Metal3)  | v1.12.3 |
-| RKE2            | v1.33.x |
-| Rancher Turtles | bundled with Rancher ≥ v2.13 |
+| Component       | Version | CAPI contract |
+|-----------------|---------|---------------|
+| CAPI core       | v1.12.5 | v1beta2       |
+| CAPA (AWS)      | v2.10.2 | v1beta1 (AWS resource CRDs serve v1beta2) |
+| CAPRKE2         | v0.24.2 | v1beta2       |
+| CAPD (Docker)   | v1.12.5 | v1beta2       |
+| RKE2 (AWS)      | v1.33.10+rke2r3 | — |
+| RKE2 (Docker)   | v1.34.6+rke2r3 | — |
+| Rancher Turtles | bundled with Rancher ≥ v2.13 | — |
+
+## Validation
+
+Install [Mike Farah yq](https://github.com/mikefarah/yq) v4.44.3 or newer and Python 3, then run:
+
+```bash
+python3 scripts/validate-repo.py
+python3 -m unittest discover -s tests
+```
+
+The check parses all YAML, verifies CAPI resource and ClusterClass template references, and checks
+Fleet bundle dependencies. Regression tests cover invalid CAPI references, namespaced AWS
+identities, missing bundle dependencies, malformed embedded CCM resources, GitRepo source
+boundaries, and ClusterClass defaults. GitHub Actions runs both commands on pushes and pull requests.
 
 ---
 

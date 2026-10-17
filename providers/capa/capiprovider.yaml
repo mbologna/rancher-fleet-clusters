@@ -18,12 +18,12 @@ metadata:
 spec:
   name: aws
   type: infrastructure
-  version: "v2.10.2"   # latest CAPA release
+  version: "v2.10.2"   # pinned CAPA release
   fetchConfig:
     url: https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.10.2/infrastructure-components.yaml
   configSecret:
-    # Secret "capa-credentials" is created by Ansible (not in this public repo).
-    # It provides AWS_B64ENCODED_CREDENTIALS for the CAPA component manifest substitution.
+    # Turtles creates this Secret from the provider variables and keeps its other
+    # keys intact; see the README for adding AWS_B64ENCODED_CREDENTIALS.
     name: capa-credentials
   variables:
     AWS_REGION: "eu-west-1"   # default region; overridden per cluster via ClusterClass variable

@@ -2,3 +2,4 @@ defaultNamespace: default
 
 dependsOn:
   - name: capi-cluster-templates-clusterclasses-aws-rke2
+  - name: capi-cluster-templates-identities-aws

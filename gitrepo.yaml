@@ -3,8 +3,8 @@
 #
 #   kubectl apply -f gitrepo.yaml --kubeconfig ~/.kube/rancher-platform.yaml
 #
-# Fleet then reconciles all paths in this repo (providers → clusterclasses → clusters)
-# and keeps them in sync on every push.
+# Fleet reconciles the resource directories and keeps them in sync on every
+# push.
 apiVersion: fleet.cattle.io/v1alpha1
 kind: GitRepo
 metadata:
@@ -13,6 +13,11 @@ metadata:
 spec:
   repo: https://github.com/mbologna/rancher-fleet-clusters
   branch: main
+  paths:
+    - providers
+    - clusterclasses
+    - identities
+    - clusters
   # Prevent Fleet from deleting CAPI resources if the GitRepo is removed or
   # paths change — avoids accidental cluster teardown.
   keepResources: true

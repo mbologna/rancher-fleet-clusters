@@ -2,12 +2,13 @@
 # Infrastructure: CAPA (AWS EC2 machines)
 # Control plane:  CAPRKE2 (RKE2ControlPlane)
 # Workers:        CAPRKE2 (RKE2ConfigTemplate)
-# CAPI contract:  v1beta2 for Cluster/ClusterClass, CAPA infra types, and CAPRKE2 types
+# CAPI core v1.12.5 and CAPRKE2 v0.24.2 use the v1beta2 contract. CAPA v2.10.2
+# uses the v1beta1 provider contract; its infrastructure resource CRDs serve v1beta2.
 # Note: v1beta2 ClusterClass uses templateRef (not ref) for all template references
 #
 # Variables exposed by this ClusterClass:
 #   region                 - AWS region (default: eu-west-1)
-#   sshKeyName             - EC2 key pair name (default: "default")
+#   sshKeyName             - Optional EC2 key pair name (default: empty)
 #   controlPlaneMachineType - EC2 type for control plane nodes (default: t3.large)
 #   workerMachineType      - EC2 type for worker nodes (default: t3.large)
 #   amiID                  - REQUIRED: AMI ID of an OS image for the EC2 instances.
@@ -20,7 +21,7 @@
 #                                --region eu-west-1
 #   cni                    - CNI plugin (default: calico)
 #   awsClusterIdentityName - AWSClusterStaticIdentity resource name (default: cluster-identity)
-#                            Credentials are created as a Secret by Ansible (not in this repo).
+#   apiServerAllowedCIDRs - Required trusted CIDR ranges for Kubernetes API access.
 #
 # Prerequisites (one-time per AWS account):
 #   clusterawsadm bootstrap iam create-cloudformation-stack
@@ -74,7 +75,8 @@ spec:
       schema:
         openAPIV3Schema:
           type: string
-          default: "default"
+          default: ""
+          description: "Optional EC2 key pair for SSH access."
     - name: controlPlaneMachineType
       required: true
       schema:
@@ -127,6 +129,15 @@ spec:
           type: boolean
           default: false
           description: "Assign public IPs to EC2 instances. Set to true when using a public subnet without NAT gateway."
+    - name: apiServerAllowedCIDRs
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: "Trusted CIDR ranges permitted to access the Kubernetes API."
 
   patches:
     - name: awsClusterTemplate
@@ -141,6 +152,37 @@ spec:
               path: /spec/template/spec/region
               valueFrom:
                 variable: region
+    - name: sshKeyName
+      enabledIf: '{{ ne .sshKeyName "" }}'
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/sshKeyName
+              valueFrom:
+                variable: sshKeyName
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSMachineTemplate
+            matchResources:
+              machineDeploymentClass:
+                names:
+                  - default-worker
+          jsonPatches:
             - op: add
               path: /spec/template/spec/sshKeyName
               valueFrom:
@@ -157,6 +199,19 @@ spec:
               path: /spec/template/spec/identityRef/name
               valueFrom:
                 variable: awsClusterIdentityName
+    - name: apiServerIngress
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            # Rule index 1 is the Kubernetes API (port 6443) ingress rule below.
+            - op: replace
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/1/cidrBlocks
+              valueFrom:
+                variable: apiServerAllowedCIDRs
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
@@ -186,10 +241,6 @@ spec:
               path: /spec/template/spec/instanceType
               valueFrom:
                 variable: controlPlaneMachineType
-            - op: add
-              path: /spec/template/spec/sshKeyName
-              valueFrom:
-                variable: sshKeyName
             - op: add
               path: /spec/template/spec/ami/id
               valueFrom:
@@ -225,10 +276,6 @@ spec:
               path: /spec/template/spec/instanceType
               valueFrom:
                 variable: workerMachineType
-            - op: add
-              path: /spec/template/spec/sshKeyName
-              valueFrom:
-                variable: sshKeyName
             - op: add
               path: /spec/template/spec/ami/id
               valueFrom:
@@ -298,7 +345,7 @@ spec:
             protocol: tcp
             toPort: 9345
           - cidrBlocks:
-              - 0.0.0.0/0
+              - 10.0.0.0/8
             description: Kubernetes API
             fromPort: 6443
             protocol: tcp
@@ -386,11 +433,23 @@ spec:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
         # RKE2 install retries: GitHub CDN occasionally returns 502; retry up to 10 times
         - |
+          RKE2_INSTALL_SUCCESS=false
           for i in $(seq 1 10); do
-            curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.33.10+rke2r3 sh -s - && break
-            echo "RKE2 install attempt $i failed, retrying in 30s..."
-            sleep 30
+            if curl -sfL https://get.rke2.io -o /tmp/install-rke2.sh &&
+              INSTALL_RKE2_VERSION=v1.33.10+rke2r3 sh /tmp/install-rke2.sh; then
+              RKE2_INSTALL_SUCCESS=true
+              break
+            fi
+            echo "RKE2 install attempt $i failed"
+            if [ "$i" -lt 10 ]; then
+              echo "Retrying in 30 seconds..."
+              sleep 30
+            fi
           done
+          if [ "$RKE2_INSTALL_SUCCESS" != true ]; then
+            echo "RKE2 installation failed after 10 attempts" >&2
+            exit 1
+          fi
         # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
         # asymmetric routing (hairpin) on port 9345. Fix: scan the local subnet for a host
         # responding on port 9345 (RKE2 supervisor) and map the NLB DNS to that private IP.
@@ -482,11 +541,23 @@ spec:
         - sudo hostnamectl set-hostname $(curl -s http://169.254.169.254/1.0/meta-data/hostname)
         # RKE2 install retries: GitHub CDN occasionally returns 502; retry up to 10 times
         - |
+          RKE2_INSTALL_SUCCESS=false
           for i in $(seq 1 10); do
-            curl -sfL https://get.rke2.io | INSTALL_RKE2_VERSION=v1.33.10+rke2r3 INSTALL_RKE2_TYPE="agent" sh -s - && break
-            echo "RKE2 install attempt $i failed, retrying in 30s..."
-            sleep 30
+            if curl -sfL https://get.rke2.io -o /tmp/install-rke2.sh &&
+              INSTALL_RKE2_VERSION=v1.33.10+rke2r3 INSTALL_RKE2_TYPE="agent" sh /tmp/install-rke2.sh; then
+              RKE2_INSTALL_SUCCESS=true
+              break
+            fi
+            echo "RKE2 install attempt $i failed"
+            if [ "$i" -lt 10 ]; then
+              echo "Retrying in 30 seconds..."
+              sleep 30
+            fi
           done
+          if [ "$RKE2_INSTALL_SUCCESS" != true ]; then
+            echo "RKE2 agent installation failed after 10 attempts" >&2
+            exit 1
+          fi
         # AWS internet-facing NLBs resolve to public IPs even from within the same VPC, causing
         # asymmetric routing (hairpin) on port 9345. Fix: scan the local subnet for a host
         # responding on port 9345 (RKE2 supervisor) and map the NLB DNS to that private IP.
