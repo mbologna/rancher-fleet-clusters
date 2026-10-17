@@ -10,6 +10,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# Fresh installs use the chart's namespaces: Helm cannot adopt the existing
+# cattle-turtles-system that the values file keeps for migrated installs.
+CHART_NAMESPACES = {
+    ("bootstrap", "rke2"): "rke2-bootstrap-system",
+    ("controlPlane", "rke2"): "rke2-control-plane-system",
+    ("infrastructure", "aws"): "capa-system",
+    ("infrastructure", "docker"): "capd-system",
+}
 
 
 def yaml_documents(path):
@@ -33,9 +41,12 @@ def provider_errors(items, expected):
             continue
         provider = matches[0]
         release = "rancher-turtles" if provider_type == "core" else "rancher-turtles-providers"
-        if provider["metadata"].get("annotations", {}).get("meta.helm.sh/release-name") != release:
+        annotations = provider["metadata"].get("annotations", {})
+        # Rancher-managed Turtles creates the core provider as a Helm hook, which has no release annotation.
+        hook_owned = provider_type == "core" and "helm.sh/hook" in annotations
+        if annotations.get("meta.helm.sh/release-name") != release and not hook_owned:
             errors.append(f"{provider_type}/{name}: expected platform Helm release {release}")
-        if provider["metadata"]["namespace"] != namespace:
+        if provider["metadata"]["namespace"] not in (namespace, CHART_NAMESPACES.get((provider_type, name))):
             errors.append(f"{provider_type}/{name}: expected namespace {namespace}")
         if provider["spec"].get("version") != version or provider["spec"].get("enableAutomaticUpdate", False):
             errors.append(f"{provider_type}/{name}: spec must pin {version} without automatic updates")
@@ -45,7 +56,9 @@ def provider_errors(items, expected):
         conditions = status.get("conditions", [])
         if status.get("phase") != "Ready" or not any(item["type"] == "ProviderInstalled" and item["status"] == "True" for item in conditions):
             errors.append(f"{provider_type}/{name}: ProviderInstalled is not True")
-        if any(item.get("observedGeneration", provider["metadata"].get("generation")) != provider["metadata"].get("generation") for item in conditions if item["type"] == "ProviderInstalled"):
+        # Turtles refreshes only the conditions it re-evaluates, so any one of them may lag a generation.
+        generation = provider["metadata"].get("generation")
+        if conditions and max(item.get("observedGeneration", generation) for item in conditions) != generation:
             errors.append(f"{provider_type}/{name}: provider status is stale")
     return errors
 

@@ -62,7 +62,20 @@ Install the supported Rancher/Turtles stack on management Kubernetes v1.34–v1.
 repository. Rancher installs Turtles as a system component; check the installed chart
 version rather than assuming Rancher bundles exactly v0.27.2.
 
-Merge these files into the platform's existing release configuration:
+rancher-platform does this step when deployed with `-e capi_providers_enabled=true`. It
+installs the providers chart from the Turtles tag Rancher ships, with
+`platform/providers-values.yaml` from this repository, and creates the CAPA Secrets from its
+`secrets.yml`. It differs from the manual steps below in two ways:
+
+- RKE2 and Docker providers use the chart's namespaces (`rke2-bootstrap-system`,
+  `rke2-control-plane-system`, `capd-system`). On a fresh install Helm cannot adopt the
+  existing `cattle-turtles-system` namespace.
+- It skips `platform/core-config.yaml`. Rancher-managed Turtles already enables
+  `CLUSTER_TOPOLOGY` in the `capi-env-variables` Secret.
+
+CAPD also needs a Docker network named `kind`; rancher-platform creates it.
+
+Otherwise, merge these files into the platform's existing release configuration:
 
 | File | Platform release / purpose |
 |---|---|
