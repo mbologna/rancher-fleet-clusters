@@ -216,27 +216,26 @@ spec:
             matchResources:
               infrastructureCluster: true
           jsonPatches:
-            # Rule index 1 is the Kubernetes API (port 6443) ingress rule below.
+            # CAPI rejects array indices in replace paths, so render the whole list.
             - op: replace
-              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/1/cidrBlocks
+              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules
               valueFrom:
-                variable: apiServerAllowedCIDRs
-    - name: nodeIngress
-      definitions:
-        - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
-            kind: AWSClusterTemplate
-            matchResources:
-              infrastructureCluster: true
-          jsonPatches:
-            - op: replace
-              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/0/cidrBlocks
-              valueFrom:
-                variable: nodeCIDRs
-            - op: replace
-              path: /spec/template/spec/controlPlaneLoadBalancer/ingressRules/2/cidrBlocks
-              valueFrom:
-                variable: nodeCIDRs
+                template: |
+                  - description: RKE2 Control Plane
+                    protocol: tcp
+                    fromPort: 9345
+                    toPort: 9345
+                    cidrBlocks: {{ toJson .nodeCIDRs }}
+                  - description: Kubernetes API
+                    protocol: tcp
+                    fromPort: 6443
+                    toPort: 6443
+                    cidrBlocks: {{ toJson .apiServerAllowedCIDRs }}
+                  - description: Kubernetes API from nodes
+                    protocol: tcp
+                    fromPort: 6443
+                    toPort: 6443
+                    cidrBlocks: {{ toJson .nodeCIDRs }}
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
@@ -361,7 +360,7 @@ spec:
           - description: RKE2 Control Plane
             fromPort: 9345
             cidrBlocks:
-              - 127.0.0.1/32   # replaced by nodeIngress
+              - 127.0.0.1/32   # replaced by apiServerIngress
             protocol: tcp
             toPort: 9345
           - cidrBlocks:
@@ -373,7 +372,7 @@ spec:
           - description: Kubernetes API from nodes
             fromPort: 6443
             cidrBlocks:
-              - 127.0.0.1/32   # replaced by nodeIngress
+              - 127.0.0.1/32   # replaced by apiServerIngress
             protocol: tcp
             toPort: 6443
         loadBalancerType: nlb
