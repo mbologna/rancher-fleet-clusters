@@ -226,16 +226,35 @@ spec:
                     fromPort: 9345
                     toPort: 9345
                     cidrBlocks: {{ toJson .nodeCIDRs }}
+                  # One rule: EC2 rejects duplicate permissions when the two lists overlap.
                   - description: Kubernetes API
                     protocol: tcp
                     fromPort: 6443
                     toPort: 6443
-                    cidrBlocks: {{ toJson .apiServerAllowedCIDRs }}
-                  - description: Kubernetes API from nodes
-                    protocol: tcp
-                    fromPort: 6443
-                    toPort: 6443
-                    cidrBlocks: {{ toJson .nodeCIDRs }}
+                    cidrBlocks: {{ toJson (uniq (concat .apiServerAllowedCIDRs .nodeCIDRs)) }}
+    # CAPA already opens etcd 2379/2380 between control-plane nodes; the template's
+    # extra etcd rules duplicate them and EC2 rejects the whole request. The template
+    # is immutable, so replace the list here.
+    - name: controlPlaneIngress
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+            kind: AWSClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: /spec/template/spec/network/additionalControlPlaneIngressRules
+              value:
+                - description: RKE2 Control Plane additional group
+                  protocol: tcp
+                  fromPort: 9345
+                  toPort: 9345
+                  sourceSecurityGroupRoles:
+                    - node
+                    - controlplane
+                    - apiserver-lb
+                    - lb
     - name: existingVpc
       enabledIf: '{{ ne .vpcID "" }}'
       definitions:
@@ -269,6 +288,12 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+            # Base OS AMIs lack the AWS CLI that the Secrets Manager userdata fetch needs.
+            # Set here because the machine templates are immutable.
+            - op: add
+              path: /spec/template/spec/cloudInit
+              value:
+                insecureSkipSecretsManager: true
     - name: controlPlaneSubnet
       enabledIf: '{{ ne .subnetID "" }}'
       definitions:
@@ -304,6 +329,12 @@ spec:
               path: /spec/template/spec/ami/id
               valueFrom:
                 variable: amiID
+            # Base OS AMIs lack the AWS CLI that the Secrets Manager userdata fetch needs.
+            # Set here because the machine templates are immutable.
+            - op: add
+              path: /spec/template/spec/cloudInit
+              value:
+                insecureSkipSecretsManager: true
     - name: workerSubnet
       enabledIf: '{{ ne .subnetID "" }}'
       definitions:
