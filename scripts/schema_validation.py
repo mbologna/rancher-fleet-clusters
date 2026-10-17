@@ -122,11 +122,20 @@ def validate_schemas(root, resources, platform):
         return errors
     for chart, name in (("rancher-turtles", "turtles"), ("rancher-turtles-providers", "providers")):
         url = f"https://raw.githubusercontent.com/rancher/turtles/{turtles[1]}/charts/{chart}/values.schema.json"
-        for error in Draft7Validator(json.loads(fetch(url))).iter_errors(platform[name]):
+        for error in Draft7Validator(json.loads(fetch(url))).iter_errors(drop_nulls(platform[name])):
             errors.append(f"platform/{name}-values.yaml: {error.message}")
     if not errors:
         errors.extend(validate_charts(root, turtles[1]))
     return errors
+
+
+def drop_nulls(value):
+    """Helm deletes keys set to null before it validates the merged values."""
+    if isinstance(value, dict):
+        return {key: drop_nulls(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [drop_nulls(item) for item in value]
+    return value
 
 
 def validate_charts(root, version):
