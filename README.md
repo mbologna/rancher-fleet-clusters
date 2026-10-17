@@ -73,7 +73,8 @@ installs the providers chart from the Turtles tag Rancher ships, with
 - It skips `platform/core-config.yaml`. Rancher-managed Turtles already enables
   `CLUSTER_TOPOLOGY` in the `capi-env-variables` Secret.
 
-CAPD also needs a Docker network named `kind`; rancher-platform creates it.
+CAPD also needs a Docker network named `kind` that pods can reach; rancher-platform creates
+it with Docker's `nat-unprotected` gateway mode.
 
 Otherwise, merge these files into the platform's existing release configuration:
 
