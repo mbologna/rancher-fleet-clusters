@@ -101,7 +101,12 @@ class PlatformTests(unittest.TestCase):
 
     def test_renovate_keeps_manual_review(self):
         config = json.loads((ROOT / "renovate.json").read_text())
-        self.assertFalse(config["automerge"])
+        self.assertEqual(config["extends"], ["github>mbologna/.github//renovate-config.json"])
+        manual = {rule["groupName"]: rule for rule in config["packageRules"] if "groupName" in rule}
+        for group in ("Turtles provider stack", "RKE2 and AWS CCM"):
+            self.assertTrue(manual[group]["dependencyDashboardApproval"])
+            self.assertFalse(manual[group]["automerge"])
+            self.assertIn("manual-review", manual[group]["labels"])
         self.assertTrue(config["ignoreUnstable"])
         self.assertIn("clusterclasses/aws-rke2/aws-ccm.yaml", config["ignorePaths"])
 

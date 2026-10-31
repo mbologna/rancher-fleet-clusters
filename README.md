@@ -31,8 +31,8 @@ storage. Delete the examples you do not want from your fork first.
 | Docker node image | kindest/node:v1.36.1 |
 
 Provider versions follow [Turtles v0.27.2's provider catalogue][catalog]. CAPI resources use
-the `v1beta2` API. The pins live in [`platform/`](platform/) and the cluster manifests, and
-Renovate proposes updates for manual review.
+the `v1beta2` API. The pins live in [`platform/`](platform/) and the cluster manifests.
+Renovate follows the shared preset; the provider stack and RKE2 updates need manual review.
 
 Live-tested on 17 October 2026: the Docker and AWS RKE2 examples reached `Available` and were
 imported into Rancher. The EKS example has not been live-tested.
@@ -191,8 +191,11 @@ GitHub Actions runs two workflows:
   `check-platform.py`. It runs on changes to `platform/` or the check, weekly, and on demand.
   CAPA gets dummy credentials, so it creates no AWS resources.
 
-Renovate groups provider-stack and RKE2 updates and waits for approval on the dependency
-dashboard. RKE2 minor upgrades are disabled because they need new classes and a CCM migration.
+Renovate uses the shared [mbologna/.github preset][preset], so routine updates automerge on
+green CI after its release-age gate. Provider-stack and RKE2 updates are grouped, wait for
+approval on the dependency dashboard and never automerge. RKE2 minor upgrades are disabled
+because they need new classes and a CCM migration.
 
+[preset]: https://github.com/mbologna/.github/blob/main/renovate-config.json
 [catalog]: https://github.com/rancher/turtles/blob/v0.27.2/internal/controllers/clusterctl/config-prime.yaml
 [yq]: https://github.com/mikefarah/yq
