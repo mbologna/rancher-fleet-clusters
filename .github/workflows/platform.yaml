@@ -63,7 +63,7 @@ jobs:
     # Runs when the changes job fails too, so a broken filter cannot pass the required check.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.platform == 'true') }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -180,13 +180,13 @@ jobs:
       - name: Wait for CAPI to provision the cluster
         working-directory: fleet
         run: |
-          kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=25m \
+          kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=15m \
             --for=jsonpath='{.status.phase}'=Provisioned
           kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=15m --for=condition=Available
           expected=$(yq -o=json '.' "clusters/${CLUSTER}/cluster.yaml" |
             jq '.spec.topology | .controlPlane.replicas + ([.workers.machineDeployments[]?.replicas] | add // 0)')
           selector="cluster.x-k8s.io/cluster-name=${CLUSTER}"
-          kubectl wait machines.cluster.x-k8s.io -n default -l "${selector}" --timeout=10m \
+          kubectl wait machines.cluster.x-k8s.io -n default -l "${selector}" --timeout=5m \
             --for=jsonpath='{.status.phase}'=Running
           running=$(kubectl get machines.cluster.x-k8s.io -n default -l "${selector}" -o json |
             jq '[.items[] | select(.status.phase == "Running")] | length')
@@ -203,7 +203,7 @@ jobs:
             sleep 10
           done
           test -n "${rancher_cluster}"
-          kubectl wait "${rancher_cluster}" --timeout=15m --for=condition=Ready
+          kubectl wait "${rancher_cluster}" --timeout=10m --for=condition=Ready
           kubectl get "${rancher_cluster}" -o wide
 
       - name: Run a pod on the downstream cluster
