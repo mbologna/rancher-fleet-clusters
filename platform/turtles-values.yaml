@@ -2,7 +2,7 @@
 # renovate: datasource=github-releases depName=rancher/rancher
 # rancher-version: v2.15.3
 # renovate: datasource=github-releases depName=rancher/turtles
-# chart-version: v0.27.2
+# chart-version: v0.27.4
 cluster-api-operator:
   cluster-api:
     enabled: true
