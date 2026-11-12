@@ -42,7 +42,7 @@
       "allowedVersions": "<3.15"
     },
     {
-      "description": "Review the tested Rancher/Turtles provider set together; grouping does not prove compatibility.",
+      "description": "Rancher pins Turtles and core CAPI, and the providers follow Turtles' catalogue, so the stack moves in one PR. The required platform check deploys the Rancher release the PR names with its providers, provisions the Docker RKE2 example through Fleet, CAPI and CAPRKE2, and waits for Turtles to import it into Rancher, so updates automerge on that check after the preset's age gates. CAPA is only installed and started: nothing exercises AWS.",
       "matchDepNames": [
         "rancher/turtles",
         "rancher/rancher",
@@ -51,10 +51,25 @@
         "rancher/cluster-api-provider-rke2"
       ],
       "groupName": "Turtles provider stack",
-      "dependencyDashboardApproval": true,
+      "automerge": true,
+      "labels": ["dependencies", "automerge"],
+      "allowedVersions": "!/-(alpha|beta|rc|dev)/"
+    },
+    {
+      "description": "Provider stack majors wait for a person. The rule above would otherwise automerge them over the preset's manual major rule.",
+      "matchDepNames": [
+        "rancher/turtles",
+        "rancher/rancher",
+        "kubernetes-sigs/cluster-api",
+        "kubernetes-sigs/cluster-api-provider-aws",
+        "rancher/cluster-api-provider-rke2"
+      ],
+      "matchUpdateTypes": ["major"],
       "automerge": false,
       "labels": ["dependencies", "manual-review"],
-      "allowedVersions": "!/-(alpha|beta|rc|dev)/"
+      "prBodyNotes": [
+        "**Why this waits for you:** a major release in the Rancher/Turtles provider stack can drop APIs or change the upgrade path. The platform check proves a fresh install, not an upgrade of running clusters; read the release notes and docs/migration.md before merging."
+      ]
     },
     {
       "description": "Review RKE2, the kind node image and the AWS CCM together, by hand.",
