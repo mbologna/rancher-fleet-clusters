@@ -6,13 +6,13 @@ providers:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.25.3
     enableAutomaticUpdate: false
   controlplaneRKE2:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.25.3
     enableAutomaticUpdate: false
   infrastructureAWS:
     enabled: true
