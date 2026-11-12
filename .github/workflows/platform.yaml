@@ -183,8 +183,8 @@ jobs:
           kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=25m \
             --for=jsonpath='{.status.phase}'=Provisioned
           kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=15m --for=condition=Available
-          expected=$(yq '.spec.topology.controlPlane.replicas + ([.spec.topology.workers.machineDeployments[].replicas] | add // 0)' \
-            "clusters/${CLUSTER}/cluster.yaml")
+          expected=$(yq -o=json '.' "clusters/${CLUSTER}/cluster.yaml" |
+            jq '.spec.topology | .controlPlane.replicas + ([.workers.machineDeployments[]?.replicas] | add // 0)')
           selector="cluster.x-k8s.io/cluster-name=${CLUSTER}"
           kubectl wait machines.cluster.x-k8s.io -n default -l "${selector}" --timeout=10m \
             --for=jsonpath='{.status.phase}'=Running
