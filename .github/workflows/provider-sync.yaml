@@ -1,0 +1,105 @@
+name: Provider sync
+
+# Rancher pins the Turtles release it bundles, and that release's provider catalogue pins core
+# CAPI, CAPD, CAPA and CAPRKE2. When a pull request changes platform/*-values.yaml (Renovate's
+# Rancher updates, or a hand edit), this runs scripts/sync-providers.py on its branch and
+# commits whatever the script rewrites as github-actions[bot]. The shared Renovate preset lists
+# that author in gitIgnoredAuthors, so Renovate still treats the branch as its own: it keeps
+# rebasing it and automerges it.
+#
+# GitHub holds the pull_request runs that a GITHUB_TOKEN push starts until someone with write
+# access approves them (action_required). The job approves them, so validate, platform and the
+# PR title check run on the synced commit like on any other. The checks on the commit it
+# replaced fail fast on the drift.
+
+on:
+  pull_request:
+    paths:
+      - platform/*-values.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-sync-${{ github.event.pull_request.number }}
+  # The synced commit starts this workflow again once approved; let this run finish first.
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # A fork's token cannot push. Validate's drift check tells its author to run the script.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # push the sync commit
+      actions: write # approve the runs GitHub holds on it
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Sync the provider pins with Rancher's Turtles catalogue
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/sync-providers.py | tee "${RUNNER_TEMP}/sync.txt"
+          if git diff --quiet; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Commit the synced pins to the pull request branch
+        id: commit
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # The exact author the shared preset's gitIgnoredAuthors lists.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          turtles=$(sed -n 's/^# chart-version: //p' platform/turtles-values.yaml)
+          {
+            echo "chore(deps): sync the CAPI providers with Turtles ${turtles}"
+            echo
+            cat "${RUNNER_TEMP}/sync.txt"
+          } > "${RUNNER_TEMP}/message.txt"
+          git commit --all --file "${RUNNER_TEMP}/message.txt"
+          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Approve the checks GitHub holds on the synced commit
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SYNCED: ${{ steps.commit.outputs.sha }}
+        run: |
+          # Each required workflow must run on the synced commit, approved or started unheld.
+          required=("PR title" "Validate manifests" "Platform check")
+          started=()
+          handled=" "
+          for _ in $(seq 36); do
+            runs=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f head_sha="${SYNCED}" \
+              -f event=pull_request --jq '.workflow_runs[] | "\(.id)\t\(.conclusion // "-")\t\(.name)"')
+            while IFS=$'\t' read -r id conclusion name; do
+              [ -n "${id}" ] || continue
+              case "${handled}" in *" ${id} "*) continue ;; esac
+              handled+="${id} "
+              if [ "${conclusion}" = action_required ]; then
+                gh api -X POST "repos/${GITHUB_REPOSITORY}/actions/runs/${id}/approve" --silent
+                echo "Approved ${name} (run ${id})"
+              fi
+              started+=("${name}")
+            done <<< "${runs}"
+            missing=0
+            for name in "${required[@]}"; do
+              printf '%s\n' "${started[@]}" | grep -qxF "${name}" || missing=1
+            done
+            if [ "${missing}" -eq 0 ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::A required check never started on ${SYNCED}; approve its run in the Actions tab."
+          exit 1

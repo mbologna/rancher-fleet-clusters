@@ -1,17 +1,18 @@
-# Merge into the platform-owned rancher-turtles-providers chart at Turtles v0.27.2.
+# Merge into the platform-owned rancher-turtles-providers chart of the Turtles release in
+# turtles-values.yaml. scripts/sync-providers.py sets the versions from its catalogue.
 # Keep existing provider namespaces during adoption; do not install duplicates.
 providers:
   bootstrapRKE2:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.25.3
     enableAutomaticUpdate: false
   controlplaneRKE2:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.25.3
     enableAutomaticUpdate: false
   infrastructureAWS:
     enabled: true

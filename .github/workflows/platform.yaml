@@ -70,6 +70,13 @@ jobs:
           path: fleet
           persist-credentials: false
 
+      # Fails fast on a head that Provider sync is about to replace with the synced pins.
+      - name: Check the provider pins against the Turtles catalogue
+        working-directory: fleet
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/sync-providers.py --check
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: mbologna/rancher-platform
