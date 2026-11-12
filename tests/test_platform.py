@@ -111,6 +111,22 @@ class PlatformTests(unittest.TestCase):
         # The provider stack automerges on the platform check, but its majors wait for a person:
         # a later major rule for the same packages must turn automerge back off.
         stack = groups["Turtles provider stack"]
+        # Rancher is the only stack pin Renovate moves; the rest follow its Turtles catalogue.
+        self.assertEqual(stack["matchDepNames"], ["rancher/rancher"])
+        followers = {
+            "rancher/turtles", "kubernetes-sigs/cluster-api",
+            "kubernetes-sigs/cluster-api-provider-aws", "rancher/cluster-api-provider-rke2",
+        }
+        disabled = [
+            rule for rule in rules
+            if rule.get("enabled") is False and set(rule.get("matchDepNames", [])) == followers
+            and not any(key.startswith("match") and key != "matchDepNames" for key in rule)
+        ]
+        self.assertEqual(len(disabled), 1)
+        self.assertFalse(any(
+            rule.get("enabled") is True and followers & set(rule.get("matchDepNames", []))
+            for rule in rules[rules.index(disabled[0]) + 1:]
+        ))
         self.assertTrue(stack["automerge"])
         self.assertNotIn("dependencyDashboardApproval", stack)
         self.assertEqual(stack["labels"], ["dependencies", "automerge"])

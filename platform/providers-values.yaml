@@ -1,4 +1,5 @@
-# Merge into the platform-owned rancher-turtles-providers chart at Turtles v0.27.2.
+# Merge into the platform-owned rancher-turtles-providers chart of the Turtles release in
+# turtles-values.yaml. scripts/sync-providers.py sets the versions from its catalogue.
 # Keep existing provider namespaces during adoption; do not install duplicates.
 providers:
   bootstrapRKE2:

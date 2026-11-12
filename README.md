@@ -19,21 +19,29 @@ storage. Delete the examples you do not want from your fork first.
 
 ## Versions
 
-| Component | Version |
-|---|---|
-| Rancher | v2.15.3, on management Kubernetes v1.34–v1.36 |
-| Rancher Turtles | v0.27.4 |
-| CAPI core and Docker provider (CAPD) | v1.13.3 |
-| RKE2 providers (CAPRKE2) | v0.25.2 |
-| AWS provider (CAPA) | v2.11.1 |
-| Workload RKE2 | v1.36.4+rke2r1 |
-| AWS cloud controller manager | v1.36.1 |
-| Docker node image | kindest/node:v1.36.1 |
+| Component | Pinned in | Set by |
+|---|---|---|
+| Rancher, on management Kubernetes v1.34–v1.36 | [`turtles-values.yaml`](platform/turtles-values.yaml) `rancher-version` | Renovate |
+| Rancher Turtles | [`turtles-values.yaml`](platform/turtles-values.yaml) `chart-version` | the Rancher release |
+| CAPI core | [`turtles-values.yaml`](platform/turtles-values.yaml) | the Turtles catalogue |
+| Docker (CAPD), AWS (CAPA) and RKE2 (CAPRKE2) providers | [`providers-values.yaml`](platform/providers-values.yaml) | the Turtles catalogue |
+| Workload RKE2 v1.36.4+rke2r1 | the cluster manifests | Renovate, with approval |
+| AWS cloud controller manager v1.36.1 | [`aws-ccm-v136.yaml`](clusterclasses/aws-rke2/aws-ccm-v136.yaml) | Renovate, with approval |
+| Docker node image kindest/node:v1.36.1 | [`docker-rke2-example`](clusters/docker-rke2-example/cluster.yaml) | Renovate, with approval |
 
-Provider versions follow [Turtles v0.27.2's provider catalogue][catalog]. CAPI resources use
-the `v1beta2` API. The pins live in [`platform/`](platform/) and the cluster manifests.
-Renovate follows the shared preset. Provider stack updates automerge on the platform check;
-its majors and RKE2 updates need manual review.
+Rancher is the only provider stack version chosen by hand or by Renovate. Each Rancher release
+bundles one Turtles release (`turtlesVersion` in its `build.yaml`), and each Turtles release
+has a [provider catalogue][catalog] naming the core CAPI and provider releases it is tested
+with. [`scripts/sync-providers.py`](scripts/sync-providers.py) reads the Rancher pin, fetches
+both files at their release tags and rewrites the Turtles and provider pins to match:
+
+```bash
+python3 scripts/sync-providers.py          # rewrite the pins
+python3 scripts/sync-providers.py --check  # report drift, change nothing
+```
+
+Set `GITHUB_TOKEN` to read GitHub with your rate limit instead of the anonymous one. CAPI
+resources use the `v1beta2` API.
 
 Live-tested on 17 October 2026: the Docker and AWS RKE2 examples reached `Available` and were
 imported into Rancher. The EKS example has not been live-tested.
@@ -149,11 +157,12 @@ second `rancher-turtles` release.
 | [`platform/providers-values.yaml`](platform/providers-values.yaml) | `rancher-turtles-providers` chart: CAPA, CAPD and both CAPRKE2 providers |
 | [`platform/core-config.yaml`](platform/core-config.yaml) | Secret enabling core CAPI's `ClusterTopology` feature |
 
-Use the charts from the Turtles v0.27.2 tag or the matching Rancher-packaged chart. Apply
-`core-config.yaml` in `cattle-capi-system` before the core provider reconciles. CAPA needs
-its Secrets before it starts. The values keep RKE2 and CAPD in `cattle-turtles-system` to
-match migrated installs; rancher-platform uses the chart's own namespaces instead because
-Helm cannot adopt an existing namespace. `check-platform.py` accepts both.
+Use the charts from the Turtles tag in `turtles-values.yaml` or the matching Rancher-packaged
+chart. Apply `core-config.yaml` in `cattle-capi-system` before the core provider reconciles.
+CAPA needs its Secrets before it starts. The values keep RKE2 and CAPD in
+`cattle-turtles-system` to match migrated installs; rancher-platform uses the chart's own
+namespaces instead because Helm cannot adopt an existing namespace. `check-platform.py`
+accepts both.
 
 ## Repository layout
 
@@ -162,7 +171,7 @@ clusterclasses/   ClusterClasses and the AWS CCM ClusterResourceSets (Fleet bund
 identities/       AWS cluster identity (Fleet bundle)
 clusters/         example clusters (Fleet bundles)
 platform/         provider chart values; applied by the platform, never by Fleet
-scripts/          validate-repo.py, check-platform.py and schema helpers
+scripts/          validate-repo.py, check-platform.py, sync-providers.py and schema helpers
 tests/            unit tests for the scripts
 docs/             migration guide
 gitrepo.yaml      Fleet GitRepo for the three bundle directories
@@ -184,9 +193,10 @@ and version conventions. `--schemas` downloads the pinned CRDs, Kubernetes schem
 charts, then validates every resource and renders both platform charts offline. Static checks
 do not cover CEL rules, admission defaults or a real bootstrap.
 
-GitHub Actions runs two workflows:
+GitHub Actions runs three workflows:
 
-- **Validate** runs the schema validation and unit tests on every push and pull request.
+- **Validate** checks the provider pins against the Turtles catalogue, then runs the schema
+  validation and unit tests on every push and pull request.
 - **Platform check** builds a disposable management cluster on the runner with
   rancher-platform, installs this branch's `providers-values.yaml` and runs
   `check-platform.py`. It then registers `gitrepo.yaml`, pointed at the commit under test and
@@ -197,15 +207,24 @@ GitHub Actions runs two workflows:
   Its `platform` job is a required check: it runs when a pull request changes `platform/`,
   the Docker class or example, `gitrepo.yaml`, the check or the workflow, and is skipped
   (which passes) otherwise. CAPA gets dummy credentials, so it creates no AWS resources.
+  The weekly run also fails if the pins drift from the Turtles catalogue.
+- **Provider sync** runs `sync-providers.py` on every pull request from this repository that
+  changes `platform/*-values.yaml`, and commits any rewritten pins to the branch as
+  `github-actions[bot]`. A push made with `GITHUB_TOKEN` starts no workflows, so it then
+  dispatches Validate and the Platform check on the branch and copies the PR title result,
+  which a sync commit cannot change, to the new commit. The checks on the replaced commit
+  fail on the drift. Pull requests from forks get no sync commit: run the script and push.
 
 Renovate uses the shared [mbologna/.github preset][preset], so routine updates automerge on
-green CI after its release-age gate. The provider stack (Rancher, Turtles, core CAPI, CAPD,
-CAPRKE2 and CAPA) moves in one PR and automerges once the required `platform` check has
-deployed it and provisioned the Docker example; its majors wait for a person. RKE2, the kind
-node image and the AWS CCM are grouped, wait for approval on the dependency dashboard and
-never automerge. RKE2 minor upgrades are disabled because they need new classes and a CCM
-migration.
+green CI after its release-age gate. Renovate updates Rancher only: Turtles, core CAPI, CAPD,
+CAPA and CAPRKE2 are disabled there, and Provider sync adds them to the Rancher update PR. That
+PR automerges once the required `platform` check has deployed the stack and provisioned the
+Docker example; Rancher majors wait for a person. The preset lists `github-actions[bot]` in
+`gitIgnoredAuthors`, so the sync commit does not stop Renovate from rebasing the branch.
+RKE2, the kind node image and the AWS CCM are grouped, wait for approval on the dependency
+dashboard and never automerge. RKE2 minor upgrades are disabled because they need new
+classes and a CCM migration.
 
 [preset]: https://github.com/mbologna/.github/blob/main/renovate-config.json
-[catalog]: https://github.com/rancher/turtles/blob/v0.27.2/internal/controllers/clusterctl/config-prime.yaml
+[catalog]: https://github.com/rancher/turtles/blob/main/internal/controllers/clusterctl/config-prime.yaml
 [yq]: https://github.com/mikefarah/yq

@@ -1,5 +1,6 @@
 """Regression tests for the repository's manifest checks."""
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -151,7 +152,10 @@ class ValidateRepositoryTests(unittest.TestCase):
         self.validate("must be restricted")
 
     def test_provider_versions_must_be_stable(self):
-        self.replace("platform/providers-values.yaml", "v0.25.2", "v0.28.0-rc.1")
+        path = self.root / "platform/providers-values.yaml"
+        text, count = re.subn(r"(?m)^(    version: )v\d+\.\d+\.\d+$", r"\1v0.28.0-rc.1", path.read_text(), count=1)
+        self.assertEqual(count, 1)
+        path.write_text(text)
         self.validate("requires an explicit stable release")
 
     def test_automatic_provider_updates_are_rejected(self):

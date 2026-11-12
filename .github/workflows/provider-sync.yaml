@@ -1,0 +1,116 @@
+name: Provider sync
+
+# Rancher pins the Turtles release it bundles, and that release's provider catalogue pins core
+# CAPI, CAPD, CAPA and CAPRKE2. When a pull request changes platform/*-values.yaml (Renovate's
+# Rancher updates, or a hand edit), this runs scripts/sync-providers.py on its branch and
+# commits whatever the script rewrites as github-actions[bot]. The shared Renovate preset lists
+# that author in gitIgnoredAuthors, so Renovate still treats the branch as its own: it keeps
+# rebasing it and automerges it.
+#
+# A push made with GITHUB_TOKEN starts no workflows, so the synced commit would carry no checks.
+# The job therefore dispatches Validate and the Platform check on the branch, which report the
+# required validate and platform checks on that commit, and copies the PR title check from the
+# commit it built on: a sync commit cannot change the title, and editing the title reruns the
+# real check. The checks on the replaced head fail fast on the drift.
+
+on:
+  pull_request:
+    paths:
+      - platform/*-values.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provider-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    # A fork's token cannot push. Validate's drift check tells its author to run the script.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write # push the sync commit
+      actions: write # dispatch Validate and the Platform check
+      statuses: write # copy the PR title check
+      checks: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Sync the provider pins with Rancher's Turtles catalogue
+        id: sync
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/sync-providers.py | tee "${RUNNER_TEMP}/sync.txt"
+          echo "base=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+          if git diff --quiet; then
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Commit the synced pins to the pull request branch
+        id: commit
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          # The exact author the shared preset's gitIgnoredAuthors lists.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          turtles=$(sed -n 's/^# chart-version: //p' platform/turtles-values.yaml)
+          {
+            echo "chore(deps): sync the CAPI providers with Turtles ${turtles}"
+            echo
+            cat "${RUNNER_TEMP}/sync.txt"
+          } > "${RUNNER_TEMP}/message.txt"
+          git commit --all --file "${RUNNER_TEMP}/message.txt"
+          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Run the required checks on the synced commit
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          gh workflow run validate.yaml --repo "${GITHUB_REPOSITORY}" --ref "${HEAD_REF}"
+          gh workflow run platform.yaml --repo "${GITHUB_REPOSITORY}" --ref "${HEAD_REF}" -f pin-rancher=true
+
+      - name: Copy the PR title check to the synced commit
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ steps.sync.outputs.base }}
+          SYNCED: ${{ steps.commit.outputs.sha }}
+        run: |
+          name="pr-title / Conventional PR title"
+          state=failure
+          description="No PR title check finished on ${BASE:0:7}; edit the title to rerun it"
+          url=""
+          for _ in $(seq 30); do
+            result=$(gh api -X GET "repos/${GITHUB_REPOSITORY}/commits/${BASE}/check-runs" -f check_name="${name}" \
+              --jq '.check_runs[0] // empty | [.status, (.conclusion // ""), .html_url] | @tsv')
+            if [ -n "${result}" ]; then
+              IFS=$'\t' read -r status conclusion url <<< "${result}"
+              if [ "${status}" = completed ]; then
+                if [ "${conclusion}" = success ]; then
+                  state=success
+                fi
+                description="${conclusion} on ${BASE:0:7}; the sync commit leaves the title unchanged"
+                break
+              fi
+            fi
+            sleep 10
+          done
+          echo "${name}: ${state} (${description})"
+          link=()
+          if [ -n "${url}" ]; then
+            link=(-f "target_url=${url}")
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/statuses/${SYNCED}" -f state="${state}" -f context="${name}" \
+            -f description="${description}" "${link[@]}" --silent
