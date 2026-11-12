@@ -1,15 +1,17 @@
 name: Platform check
 
 # Builds a disposable management cluster on the runner with rancher-platform (RKE2, Rancher,
-# Turtles), installs this branch's providers-values.yaml, then runs scripts/check-platform.py.
-# CAPA gets dummy keys so its controller starts; nothing calls AWS.
+# Turtles), installs this branch's providers-values.yaml, runs scripts/check-platform.py, then
+# provisions clusters/docker-rke2-example through Fleet, CAPI and CAPD, waits for Turtles to
+# import it into Rancher, runs a pod on it and deletes it. On pull requests Rancher is the
+# version platform/turtles-values.yaml expects; the weekly run keeps rancher-platform's own pin
+# so it still catches drift. CAPA gets dummy keys so its controller starts; nothing calls AWS.
 
 on:
+  # No paths filter: the platform job is a required check, so it has to report on every pull
+  # request. The changes job skips it (a skipped job counts as passed) when nothing it tests
+  # changed.
   pull_request:
-    paths:
-      - platform/**
-      - scripts/check-platform.py
-      - .github/workflows/platform.yaml
   schedule:
     # Weekly, to catch drift between this repo's pins and rancher-platform's main branch.
     - cron: "17 5 * * 1"
@@ -26,10 +28,42 @@ concurrency:
   group: platform-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CLUSTER: docker-rke2-example
+
 jobs:
-  check:
+  changes:
     runs-on: ubuntu-26.04
-    timeout-minutes: 45
+    permissions:
+      pull-requests: read
+    outputs:
+      platform: ${{ steps.filter.outputs.platform }}
+    steps:
+      - name: Check whether the pull request touches what the platform job tests
+        id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ -z "${PR}" ]; then
+            echo "platform=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          files=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --jq '.[].filename')
+          echo "${files}"
+          pattern='^(platform/|clusterclasses/docker-rke2/|clusters/docker-rke2-example/|gitrepo\.yaml$|scripts/check-platform\.py$|\.github/workflows/platform\.yaml$)'
+          if grep -qE "${pattern}" <<< "${files}"; then
+            echo "platform=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "platform=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+  platform:
+    needs: changes
+    # Runs when the changes job fails too, so a broken filter cannot pass the required check.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.platform == 'true') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -54,10 +88,20 @@ jobs:
           ./manage.sh install
 
       # The runner is the target host. Docker is preinstalled, so only CAPD's network is set up.
+      # Pull requests deploy the Rancher release this branch expects (Rancher brings its Turtles
+      # and core CAPI), so a provider stack update is tested as a whole.
       - name: Write the inventory and secrets
         working-directory: rancher-platform/ansible
+        env:
+          PIN_RANCHER: ${{ github.event_name == 'pull_request' }}
         run: |
           ip=$(hostname -I | awk '{print $1}')
+          rancher_version=""
+          if [ "${PIN_RANCHER}" = true ]; then
+            rancher_version=$(sed -n 's/^# rancher-version: v//p' "${GITHUB_WORKSPACE}/fleet/platform/turtles-values.yaml")
+            test -n "${rancher_version}"
+            echo "Deploying Rancher ${rancher_version} from platform/turtles-values.yaml"
+          fi
           cat > inventory/hosts.yml <<INVENTORY
           servers:
             hosts:
@@ -71,6 +115,9 @@ jobs:
                 capi_providers_enabled: true
                 capi_providers_values_url: file://${GITHUB_WORKSPACE}/fleet/platform/providers-values.yaml
           INVENTORY
+          if [ -n "${rancher_version}" ]; then
+            echo "      rancher_version: \"${rancher_version}\"" >> inventory/hosts.yml
+          fi
           password=$(openssl rand -hex 16)
           echo "::add-mask::${password}"
           cat > group_vars/all/secrets.yml <<SECRETS
@@ -81,12 +128,12 @@ jobs:
 
       - name: Deploy the management cluster
         working-directory: rancher-platform/ansible
-        run: ./manage.sh deploy
+        run: |
+          ./manage.sh deploy
+          echo "KUBECONFIG=${HOME}/.kube/rancher-platform.yaml" >> "${GITHUB_ENV}"
 
       - name: Check the platform
         working-directory: fleet
-        env:
-          KUBECONFIG: /home/runner/.kube/rancher-platform.yaml
         # Turtles may still be reconciling a provider just after the deploy; retry for 5 minutes.
         run: |
           context=$(kubectl config current-context)
@@ -97,11 +144,133 @@ jobs:
           done
           exit 1
 
+      - name: Install clusterctl
+        working-directory: fleet
+        run: |
+          version=$(yq '.["cluster-api-operator"]["cluster-api"].core.version' platform/turtles-values.yaml)
+          curl -fsSL --retry 5 -o "${RUNNER_TEMP}/clusterctl" \
+            "https://github.com/kubernetes-sigs/cluster-api/releases/download/${version}/clusterctl-linux-amd64"
+          sudo install -m 0755 "${RUNNER_TEMP}/clusterctl" /usr/local/bin/clusterctl
+          clusterctl version
+
+      # The path a user takes: gitrepo.yaml, pointed at this commit and narrowed to the Docker
+      # class and example (the AWS bundles need real values and credentials).
+      - name: Register this commit as the Fleet GitRepo
+        id: gitrepo
+        working-directory: fleet
+        env:
+          REPO_URL: https://github.com/${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          yq '.spec.repo = strenv(REPO_URL) | .spec.revision = strenv(REVISION) | del(.spec.branch)
+            | .spec.paths = ["clusterclasses/docker-rke2", "clusters/docker-rke2-example"]' gitrepo.yaml \
+            > "${RUNNER_TEMP}/gitrepo.yaml"
+          cat "${RUNNER_TEMP}/gitrepo.yaml"
+          kubectl apply -f "${RUNNER_TEMP}/gitrepo.yaml"
+
+      - name: Wait for Fleet to create the cluster
+        run: |
+          for _ in $(seq 60); do
+            kubectl get "clusters.cluster.x-k8s.io/${CLUSTER}" -n default 2>/dev/null && exit 0
+            sleep 10
+          done
+          kubectl get gitrepo,bundles -n fleet-local -o wide
+          exit 1
+
+      - name: Wait for CAPI to provision the cluster
+        working-directory: fleet
+        run: |
+          kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=25m \
+            --for=jsonpath='{.status.phase}'=Provisioned
+          kubectl wait "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --timeout=15m --for=condition=Available
+          expected=$(yq '.spec.topology.controlPlane.replicas + ([.spec.topology.workers.machineDeployments[].replicas] | add // 0)' \
+            "clusters/${CLUSTER}/cluster.yaml")
+          selector="cluster.x-k8s.io/cluster-name=${CLUSTER}"
+          kubectl wait machines.cluster.x-k8s.io -n default -l "${selector}" --timeout=10m \
+            --for=jsonpath='{.status.phase}'=Running
+          running=$(kubectl get machines.cluster.x-k8s.io -n default -l "${selector}" -o json |
+            jq '[.items[] | select(.status.phase == "Running")] | length')
+          echo "Running machines: ${running} of ${expected}"
+          test "${running}" -eq "${expected}"
+          clusterctl describe cluster "${CLUSTER}" -n default
+
+      - name: Wait for Turtles to import the cluster into Rancher
+        run: |
+          selector="cluster-api.cattle.io/capi-cluster-owner=${CLUSTER},cluster-api.cattle.io/capi-cluster-owner-ns=default"
+          for _ in $(seq 60); do
+            rancher_cluster=$(kubectl get clusters.management.cattle.io -l "${selector}" -o name)
+            [ -n "${rancher_cluster}" ] && break
+            sleep 10
+          done
+          test -n "${rancher_cluster}"
+          kubectl wait "${rancher_cluster}" --timeout=15m --for=condition=Ready
+          kubectl get "${rancher_cluster}" -o wide
+
+      - name: Run a pod on the downstream cluster
+        run: |
+          downstream="${RUNNER_TEMP}/downstream.yaml"
+          (umask 077 && kubectl get secret "${CLUSTER}-kubeconfig" -n default -o jsonpath='{.data.value}' |
+            base64 -d > "${downstream}")
+          export KUBECONFIG="${downstream}"
+          kubectl wait nodes --all --for=condition=Ready --timeout=5m
+          kubectl get nodes -o wide
+          cat <<'JOB' | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ci-smoke
+            namespace: default
+          spec:
+            backoffLimit: 3
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: smoke
+                    image: mirror.gcr.io/library/busybox:1.37
+                    command: [nslookup, kubernetes.default.svc.cluster.local]
+          JOB
+          kubectl wait job/ci-smoke -n default --for=condition=Complete --timeout=5m
+          kubectl logs job/ci-smoke -n default
+
       - name: Show cluster state
         if: failure()
-        env:
-          KUBECONFIG: /home/runner/.kube/rancher-platform.yaml
         run: |
           kubectl get capiproviders -A || true
           kubectl get pods -A || true
+          kubectl get gitrepo,bundles -n fleet-local -o wide || true
+          kubectl get bundledeployments -A -o wide || true
+          clusterctl describe cluster "${CLUSTER}" -n default --show-conditions all || true
+          kubectl get clusters.cluster.x-k8s.io,machines.cluster.x-k8s.io,dockerclusters,dockermachines,rke2controlplanes,rke2configs \
+            -A -o wide || true
+          kubectl get clusters.management.cattle.io -o wide || true
+          for name in capi-controller-manager capd-controller-manager rke2-bootstrap-controller-manager \
+              rke2-control-plane-controller-manager rancher-turtles-controller-manager; do
+            namespace=$(kubectl get deployments -A --field-selector "metadata.name=${name}" \
+              -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null) || continue
+            [ -n "${namespace}" ] || continue
+            echo "::group::${namespace}/${name} logs"
+            kubectl logs -n "${namespace}" "deployment/${name}" --all-containers --tail=300 || true
+            echo "::endgroup::"
+          done
+          docker ps -a || true
+          for container in $(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CLUSTER}"); do
+            echo "::group::$(docker inspect -f '{{.Name}}' "${container}") RKE2 journal"
+            docker exec "${container}" journalctl -u rke2-server -u rke2-agent --no-pager -n 150 || true
+            echo "::endgroup::"
+          done
           df -h /
+          free -m
+
+      # keepResources leaves the cluster when the GitRepo goes, so delete it explicitly; a CAPI
+      # upgrade that breaks deletion fails here.
+      - name: Delete the downstream cluster
+        if: ${{ !cancelled() && steps.gitrepo.outcome == 'success' }}
+        run: |
+          kubectl delete gitrepo capi-cluster-templates -n fleet-local --timeout=5m
+          kubectl delete "clusters.cluster.x-k8s.io/${CLUSTER}" -n default --ignore-not-found --timeout=10m
+          leftover=$(docker ps -aq --filter "label=io.x-k8s.kind.cluster=${CLUSTER}")
+          if [ -n "${leftover}" ]; then
+            docker ps -a --filter "label=io.x-k8s.kind.cluster=${CLUSTER}"
+            exit 1
+          fi

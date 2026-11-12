@@ -188,8 +188,14 @@ GitHub Actions runs two workflows:
 - **Validate** runs the schema validation and unit tests on every push and pull request.
 - **Platform check** builds a disposable management cluster on the runner with
   rancher-platform, installs this branch's `providers-values.yaml` and runs
-  `check-platform.py`. It runs on changes to `platform/` or the check, weekly, and on demand.
-  CAPA gets dummy credentials, so it creates no AWS resources.
+  `check-platform.py`. It then registers `gitrepo.yaml`, pointed at the commit under test and
+  narrowed to the Docker class and example, waits for CAPI to provision
+  `docker-rke2-example`, for Turtles to import it into Rancher and for a pod to run on it,
+  and deletes the cluster. On pull requests it deploys the Rancher release that
+  `turtles-values.yaml` expects; the weekly run keeps rancher-platform's pin to catch drift.
+  Its `platform` job is a required check: it runs when a pull request changes `platform/`,
+  the Docker class or example, `gitrepo.yaml`, the check or the workflow, and is skipped
+  (which passes) otherwise. CAPA gets dummy credentials, so it creates no AWS resources.
 
 Renovate uses the shared [mbologna/.github preset][preset], so routine updates automerge on
 green CI after its release-age gate. Provider-stack and RKE2 updates are grouped, wait for
