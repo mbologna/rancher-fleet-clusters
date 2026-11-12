@@ -35,6 +35,13 @@
   ],
   "packageRules": [
     {
+      "description": "The platform check runs rancher-platform's Ansible on the setup-python interpreter, and ansible-core 2.21 does not run on Python 3.15 (AttributeError: module 'dataclasses' has no attribute '_is_type'). Hold platform.yaml below 3.15 until rancher-platform's ansible/requirements-ci.txt moves to ansible-core 2.22 and its own e2e hold is lifted.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["python"],
+      "matchFileNames": [".github/workflows/platform.yaml"],
+      "allowedVersions": "<3.15"
+    },
+    {
       "description": "Review the tested Rancher/Turtles provider set together; grouping does not prove compatibility.",
       "matchDepNames": [
         "rancher/turtles",
