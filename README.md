@@ -32,7 +32,8 @@ storage. Delete the examples you do not want from your fork first.
 
 Provider versions follow [Turtles v0.27.2's provider catalogue][catalog]. CAPI resources use
 the `v1beta2` API. The pins live in [`platform/`](platform/) and the cluster manifests.
-Renovate follows the shared preset; the provider stack and RKE2 updates need manual review.
+Renovate follows the shared preset. Provider stack updates automerge on the platform check;
+its majors and RKE2 updates need manual review.
 
 Live-tested on 17 October 2026: the Docker and AWS RKE2 examples reached `Available` and were
 imported into Rancher. The EKS example has not been live-tested.
@@ -198,9 +199,12 @@ GitHub Actions runs two workflows:
   (which passes) otherwise. CAPA gets dummy credentials, so it creates no AWS resources.
 
 Renovate uses the shared [mbologna/.github preset][preset], so routine updates automerge on
-green CI after its release-age gate. Provider-stack and RKE2 updates are grouped, wait for
-approval on the dependency dashboard and never automerge. RKE2 minor upgrades are disabled
-because they need new classes and a CCM migration.
+green CI after its release-age gate. The provider stack (Rancher, Turtles, core CAPI, CAPD,
+CAPRKE2 and CAPA) moves in one PR and automerges once the required `platform` check has
+deployed it and provisioned the Docker example; its majors wait for a person. RKE2, the kind
+node image and the AWS CCM are grouped, wait for approval on the dependency dashboard and
+never automerge. RKE2 minor upgrades are disabled because they need new classes and a CCM
+migration.
 
 [preset]: https://github.com/mbologna/.github/blob/main/renovate-config.json
 [catalog]: https://github.com/rancher/turtles/blob/v0.27.2/internal/controllers/clusterctl/config-prime.yaml

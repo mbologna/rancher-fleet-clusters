@@ -102,11 +102,30 @@ class PlatformTests(unittest.TestCase):
     def test_renovate_keeps_manual_review(self):
         config = json.loads((ROOT / "renovate.json").read_text())
         self.assertEqual(config["extends"], ["github>mbologna/.github//renovate-config.json"])
-        manual = {rule["groupName"]: rule for rule in config["packageRules"] if "groupName" in rule}
-        for group in ("Turtles provider stack", "RKE2 and AWS CCM"):
-            self.assertTrue(manual[group]["dependencyDashboardApproval"])
-            self.assertFalse(manual[group]["automerge"])
-            self.assertIn("manual-review", manual[group]["labels"])
+        rules = config["packageRules"]
+        groups = {rule["groupName"]: rule for rule in rules if "groupName" in rule}
+        rke2 = groups["RKE2 and AWS CCM"]
+        self.assertTrue(rke2["dependencyDashboardApproval"])
+        self.assertFalse(rke2["automerge"])
+        self.assertIn("manual-review", rke2["labels"])
+        # The provider stack automerges on the platform check, but its majors wait for a person:
+        # a later major rule for the same packages must turn automerge back off.
+        stack = groups["Turtles provider stack"]
+        self.assertTrue(stack["automerge"])
+        self.assertNotIn("dependencyDashboardApproval", stack)
+        self.assertEqual(stack["labels"], ["dependencies", "automerge"])
+        self.assertIn("alpha|beta|rc|dev", stack["allowedVersions"])
+        later = rules[rules.index(stack) + 1:]
+        majors = [
+            rule for rule in later
+            if set(stack["matchDepNames"]) <= set(rule.get("matchDepNames", []))
+            and rule.get("matchUpdateTypes") == ["major"]
+        ]
+        self.assertEqual(len(majors), 1)
+        self.assertFalse(majors[0]["automerge"])
+        self.assertIn("manual-review", majors[0]["labels"])
+        self.assertFalse(any(rule.get("automerge") for rule in later[later.index(majors[0]) + 1:]
+                             if set(stack["matchDepNames"]) & set(rule.get("matchDepNames", []))))
         # Renovate ignores unstable versions by default; only check it is not switched off.
         self.assertIsNot(config.get("ignoreUnstable", True), False)
         self.assertIn("clusterclasses/aws-rke2/aws-ccm.yaml", config["ignorePaths"])
