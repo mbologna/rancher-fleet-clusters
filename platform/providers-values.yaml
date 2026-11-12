@@ -5,19 +5,19 @@ providers:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.27.1
     enableAutomaticUpdate: false
   controlplaneRKE2:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=rancher/cluster-api-provider-rke2
-    version: v0.25.2
+    version: v0.27.1
     enableAutomaticUpdate: false
   infrastructureAWS:
     enabled: true
     namespace: capa-system
     # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api-provider-aws
-    version: v2.11.1
+    version: v2.13.1
     enableAutomaticUpdate: false
     configSecret:
       name: capa-credentials
@@ -32,7 +32,7 @@ providers:
     enabled: true
     namespace: cattle-turtles-system
     # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
-    version: v1.13.3
+    version: v1.14.3
     enableAutomaticUpdate: false
   addonFleet:
     enabled: false

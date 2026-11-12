@@ -11,5 +11,5 @@ cluster-api-operator:
     core:
       namespace: cattle-capi-system
       # renovate: datasource=github-releases depName=kubernetes-sigs/cluster-api
-      version: v1.13.3
+      version: v1.14.3
       enableAutomaticUpdate: false
