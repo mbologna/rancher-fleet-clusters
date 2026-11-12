@@ -21,8 +21,8 @@ storage. Delete the examples you do not want from your fork first.
 
 | Component | Version |
 |---|---|
-| Rancher | v2.15.2, on management Kubernetes v1.34–v1.36 |
-| Rancher Turtles | v0.27.2 |
+| Rancher | v2.15.3, on management Kubernetes v1.34–v1.36 |
+| Rancher Turtles | v0.27.4 |
 | CAPI core and Docker provider (CAPD) | v1.13.3 |
 | RKE2 providers (CAPRKE2) | v0.25.2 |
 | AWS provider (CAPA) | v2.11.1 |
