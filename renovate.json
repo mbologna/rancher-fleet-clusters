@@ -1,8 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["github>mbologna/.github//renovate-config.json"],
-  "ignoreUnstable": true,
-  "dependencyDashboard": true,
   "ignorePaths": [
     "clusterclasses/aws-rke2/clusterclass.yaml",
     "clusterclasses/aws-rke2/aws-ccm.yaml",

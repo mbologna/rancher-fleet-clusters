@@ -107,7 +107,8 @@ class PlatformTests(unittest.TestCase):
             self.assertTrue(manual[group]["dependencyDashboardApproval"])
             self.assertFalse(manual[group]["automerge"])
             self.assertIn("manual-review", manual[group]["labels"])
-        self.assertTrue(config["ignoreUnstable"])
+        # Renovate ignores unstable versions by default; only check it is not switched off.
+        self.assertIsNot(config.get("ignoreUnstable", True), False)
         self.assertIn("clusterclasses/aws-rke2/aws-ccm.yaml", config["ignorePaths"])
 
     def test_renovate_discovers_explicit_version_pins(self):
