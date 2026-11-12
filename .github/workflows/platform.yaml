@@ -3,10 +3,9 @@ name: Platform check
 # Builds a disposable management cluster on the runner with rancher-platform (RKE2, Rancher,
 # Turtles), installs this branch's providers-values.yaml, runs scripts/check-platform.py, then
 # provisions clusters/docker-rke2-example through Fleet, CAPI and CAPD, waits for Turtles to
-# import it into Rancher, runs a pod on it and deletes it. On pull requests (and when Provider
-# sync dispatches it on a pull request branch) Rancher is the version
-# platform/turtles-values.yaml expects; the weekly run keeps rancher-platform's own pin so it
-# still catches drift. CAPA gets dummy keys so its controller starts; nothing calls AWS.
+# import it into Rancher, runs a pod on it and deletes it. On pull requests Rancher is the
+# version platform/turtles-values.yaml expects; the weekly run keeps rancher-platform's own pin
+# so it still catches drift. CAPA gets dummy keys so its controller starts; nothing calls AWS.
 
 on:
   # No paths filter: the platform job is a required check, so it has to report on every pull
@@ -21,12 +20,6 @@ on:
       rancher-platform-ref:
         description: rancher-platform branch, tag or commit to deploy
         default: main
-      # Provider sync sets this when it re-runs the check on a pull request branch, whose own
-      # push (made with GITHUB_TOKEN) starts no workflows.
-      pin-rancher:
-        description: Deploy the Rancher version platform/turtles-values.yaml expects
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -107,7 +100,7 @@ jobs:
       - name: Write the inventory and secrets
         working-directory: rancher-platform/ansible
         env:
-          PIN_RANCHER: ${{ github.event_name == 'pull_request' || inputs.pin-rancher == true }}
+          PIN_RANCHER: ${{ github.event_name == 'pull_request' }}
         run: |
           ip=$(hostname -I | awk '{print $1}')
           rancher_version=""

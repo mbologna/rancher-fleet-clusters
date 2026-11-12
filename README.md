@@ -210,10 +210,10 @@ GitHub Actions runs three workflows:
   The weekly run also fails if the pins drift from the Turtles catalogue.
 - **Provider sync** runs `sync-providers.py` on every pull request from this repository that
   changes `platform/*-values.yaml`, and commits any rewritten pins to the branch as
-  `github-actions[bot]`. A push made with `GITHUB_TOKEN` starts no workflows, so it then
-  dispatches Validate and the Platform check on the branch and copies the PR title result,
-  which a sync commit cannot change, to the new commit. The checks on the replaced commit
-  fail on the drift. Pull requests from forks get no sync commit: run the script and push.
+  `github-actions[bot]`. GitHub holds the workflow runs that this `GITHUB_TOKEN` push starts
+  until someone with write access approves them; the job approves them, so the required checks
+  run on the synced commit. The checks on the replaced commit fail on the drift. Pull requests
+  from forks get no sync commit: run the script and push.
 
 Renovate uses the shared [mbologna/.github preset][preset], so routine updates automerge on
 green CI after its release-age gate. Renovate updates Rancher only: Turtles, core CAPI, CAPD,
