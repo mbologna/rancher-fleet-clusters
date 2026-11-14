@@ -39,7 +39,7 @@ spec:
     classRef:
       name: aws-rke2-v136
     # renovate: datasource=github-releases depName=rancher/rke2 versioning=regex:^v?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\+rke2r(?<build>\d+)$
-    version: v1.36.4+rke2r1
+    version: v1.36.6+rke2r1
     controlPlane:
       replicas: 1   # increase to 3 for HA
     workers:

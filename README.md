@@ -25,9 +25,9 @@ storage. Delete the examples you do not want from your fork first.
 | Rancher Turtles | [`turtles-values.yaml`](platform/turtles-values.yaml) `chart-version` | the Rancher release |
 | CAPI core | [`turtles-values.yaml`](platform/turtles-values.yaml) | the Turtles catalogue |
 | Docker (CAPD), AWS (CAPA) and RKE2 (CAPRKE2) providers | [`providers-values.yaml`](platform/providers-values.yaml) | the Turtles catalogue |
-| Workload RKE2 v1.36.4+rke2r1 | the cluster manifests | Renovate, with approval |
+| Workload RKE2 v1.36.6+rke2r1 | the cluster manifests | Renovate, with approval |
 | AWS cloud controller manager v1.36.1 | [`aws-ccm-v136.yaml`](clusterclasses/aws-rke2/aws-ccm-v136.yaml) | Renovate, with approval |
-| Docker node image kindest/node:v1.36.1 | [`docker-rke2-example`](clusters/docker-rke2-example/cluster.yaml) | Renovate, with approval |
+| Docker node image kindest/node:v1.36.4 | [`docker-rke2-example`](clusters/docker-rke2-example/cluster.yaml) | Renovate, with approval |
 
 Rancher is the only provider stack version chosen by hand or by Renovate. Each Rancher release
 bundles one Turtles release (`turtlesVersion` in its `build.yaml`), and each Turtles release
