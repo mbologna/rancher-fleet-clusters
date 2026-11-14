@@ -130,7 +130,7 @@ class ValidateRepositoryTests(unittest.TestCase):
         self.validate("overlapping pod/service networks")
 
     def test_v136_rejects_old_workload_minor(self):
-        self.replace("clusters/aws-rke2-example/cluster.yaml", "v1.36.4+rke2r1", "v1.33.10+rke2r3")
+        self.replace("clusters/aws-rke2-example/cluster.yaml", "v1.36.6+rke2r1", "v1.33.10+rke2r3")
         self.validate("v136 class requires RKE2 v1.36")
 
     def test_ccm_labels_must_match_workload_minor(self):
