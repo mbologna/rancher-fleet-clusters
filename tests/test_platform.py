@@ -104,10 +104,21 @@ class PlatformTests(unittest.TestCase):
         self.assertEqual(config["extends"], ["github>mbologna/.github//renovate-config.json"])
         rules = config["packageRules"]
         groups = {rule["groupName"]: rule for rule in rules if "groupName" in rule}
-        rke2 = groups["RKE2 and AWS CCM"]
-        self.assertTrue(rke2["dependencyDashboardApproval"])
-        self.assertFalse(rke2["automerge"])
-        self.assertIn("manual-review", rke2["labels"])
+        # RKE2 and kind patches automerge on the platform check, which provisions the Docker example
+        # on them; nothing runs the AWS CCM, so it waits for a person; minors and majors stay off.
+        ccm = "registry.k8s.io/provider-aws/cloud-controller-manager"
+        rke2 = groups["RKE2 and kind"]
+        self.assertEqual(rke2["matchDepNames"], ["rancher/rke2", "kindest/node"])
+        self.assertTrue(rke2["automerge"])
+        ccm_rules = [rule for rule in rules if rule.get("matchDepNames") == [ccm]]
+        self.assertEqual(len(ccm_rules), 1)
+        self.assertFalse(ccm_rules[0]["automerge"])
+        self.assertIn("manual-review", ccm_rules[0]["labels"])
+        self.assertTrue(any(
+            rule.get("enabled") is False and rule.get("matchUpdateTypes") == ["major", "minor"]
+            and {"rancher/rke2", "kindest/node", ccm} <= set(rule.get("matchDepNames", []))
+            for rule in rules
+        ))
         # The provider stack automerges on the platform check, but its majors wait for a person:
         # a later major rule for the same packages must turn automerge back off.
         stack = groups["Turtles provider stack"]
