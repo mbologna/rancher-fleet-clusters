@@ -26,7 +26,7 @@ storage. Delete the examples you do not want from your fork first.
 | CAPI core | [`turtles-values.yaml`](platform/turtles-values.yaml) | the Turtles catalogue |
 | Docker (CAPD), AWS (CAPA) and RKE2 (CAPRKE2) providers | [`providers-values.yaml`](platform/providers-values.yaml) | the Turtles catalogue |
 | Workload RKE2 v1.36.6+rke2r1 | the cluster manifests | Renovate, patches |
-| AWS cloud controller manager v1.36.1 | [`aws-ccm-v136.yaml`](clusterclasses/aws-rke2/aws-ccm-v136.yaml) | Renovate, reviewed by hand |
+| AWS cloud controller manager v1.36.1 | [`aws-ccm-v136.yaml`](clusterclasses/aws-rke2/aws-ccm-v136.yaml) | Renovate, patches automerge |
 | Docker node image kindest/node:v1.36.4 | [`docker-rke2-example`](clusters/docker-rke2-example/cluster.yaml) | Renovate, patches |
 
 Rancher is the only provider stack version chosen by hand or by Renovate. Each Rancher release
@@ -222,8 +222,8 @@ PR automerges once the required `platform` check has deployed the stack and prov
 Docker example; Rancher majors wait for a person. The preset lists `github-actions[bot]` in
 `gitIgnoredAuthors`, so the sync commit does not stop Renovate from rebasing the branch.
 RKE2 and kind node image patches are grouped and automerge on the same `platform` check, which
-provisions the Docker example on them. AWS CCM updates wait for a person, since nothing
-exercises AWS. RKE2 minor upgrades are disabled because they need new classes and a CCM
+provisions the Docker example on them. AWS CCM patches automerge on the `validate` check, which
+only confirms that registry.k8s.io serves the pinned image: nothing exercises AWS. RKE2 minor upgrades are disabled because they need new classes and a CCM
 migration.
 
 [preset]: https://github.com/mbologna/.github/blob/main/renovate-config.json

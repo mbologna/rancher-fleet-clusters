@@ -105,15 +105,20 @@ class PlatformTests(unittest.TestCase):
         rules = config["packageRules"]
         groups = {rule["groupName"]: rule for rule in rules if "groupName" in rule}
         # RKE2 and kind patches automerge on the platform check, which provisions the Docker example
-        # on them; nothing runs the AWS CCM, so it waits for a person; minors and majors stay off.
+        # on them. AWS CCM patches automerge on validate, which checks the image is published; they
+        # are split from minors, which stay off with majors, so a patch of the pinned line still shows.
         ccm = "registry.k8s.io/provider-aws/cloud-controller-manager"
         rke2 = groups["RKE2 and kind"]
         self.assertEqual(rke2["matchDepNames"], ["rancher/rke2", "kindest/node"])
         self.assertTrue(rke2["automerge"])
         ccm_rules = [rule for rule in rules if rule.get("matchDepNames") == [ccm]]
         self.assertEqual(len(ccm_rules), 1)
-        self.assertFalse(ccm_rules[0]["automerge"])
-        self.assertIn("manual-review", ccm_rules[0]["labels"])
+        self.assertTrue(ccm_rules[0]["automerge"])
+        self.assertTrue(any(
+            rule.get("separateMinorPatch") is True
+            and {"rancher/rke2", "kindest/node", ccm} <= set(rule["matchDepNames"])
+            for rule in rules
+        ))
         self.assertTrue(any(
             rule.get("enabled") is False and rule.get("matchUpdateTypes") == ["major", "minor"]
             and {"rancher/rke2", "kindest/node", ccm} <= set(rule.get("matchDepNames", []))
