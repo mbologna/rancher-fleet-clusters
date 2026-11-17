@@ -33,6 +33,16 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Install schema validator
         run: python3 -m pip install -r requirements-validation.txt
+      # Renovate dates CCM releases by their GitHub tag, which can come before
+      # registry.k8s.io serves the image; an automerged patch must not pin one
+      # that clusters can't pull.
+      - name: Check the pinned AWS CCM images are published
+        run: |
+          grep -ho 'registry\.k8s\.io/provider-aws/cloud-controller-manager:[^[:space:]"]*' clusterclasses/aws-rke2/*.yaml \
+            | sort -u | while read -r ref; do
+              docker manifest inspect "$ref" >/dev/null || { echo "::error::$ref is not published yet"; exit 1; }
+              echo "$ref is published"
+            done
       - name: Validate manifests and references
         run: python3 scripts/validate-repo.py --schemas
       - name: Test manifest checks
