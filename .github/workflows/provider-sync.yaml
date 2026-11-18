@@ -9,7 +9,7 @@ name: Provider sync
 #
 # GitHub holds the pull_request runs that a GITHUB_TOKEN push starts until someone with write
 # access approves them (action_required). The job approves them, so validate, platform and the
-# PR title check run on the synced commit like on any other. The checks on the commit it
+# commit check run on the synced commit like on any other. The checks on the commit it
 # replaced fail fast on the drift.
 
 on:
@@ -76,7 +76,7 @@ jobs:
           SYNCED: ${{ steps.commit.outputs.sha }}
         run: |
           # Each required workflow must run on the synced commit, approved or started unheld.
-          required=("PR title" "Validate manifests" "Platform check")
+          required=("Commits" "Validate manifests" "Platform check")
           started=()
           handled=" "
           for _ in $(seq 36); do
