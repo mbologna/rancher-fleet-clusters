@@ -1,5 +1,12 @@
 # rancher-fleet-clusters
 
+> **Moved.** Since 2026-11-19 these templates live in
+> [mbologna/rancher-platform under `fleet/`](https://github.com/mbologna/rancher-platform/tree/main/fleet),
+> and this repository is archived. To move an existing install, point the GitRepo at
+> `https://github.com/mbologna/rancher-platform` with the paths `fleet/clusterclasses`,
+> `fleet/identities` and `fleet/clusters`: the bundle and Helm release names are pinned there,
+> so Fleet keeps the same bundles and releases.
+
 Fleet bundles that create Kubernetes clusters from a Rancher management cluster with Cluster API
 (CAPI). The repository holds ClusterClasses, a shared AWS identity and three example clusters.
 Rancher Turtles imports each cluster into Rancher once it is ready.
