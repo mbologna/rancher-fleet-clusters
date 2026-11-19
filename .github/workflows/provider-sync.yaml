@@ -63,7 +63,8 @@ jobs:
           {
             echo "chore(deps): sync the CAPI providers with Turtles ${turtles}"
             echo
-            cat "${RUNNER_TEMP}/sync.txt"
+            # commitlint caps body lines at 72 columns
+            fold -s -w 72 "${RUNNER_TEMP}/sync.txt"
           } > "${RUNNER_TEMP}/message.txt"
           git commit --all --file "${RUNNER_TEMP}/message.txt"
           git push origin "HEAD:refs/heads/${HEAD_REF}"
